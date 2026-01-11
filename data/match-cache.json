@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-01-10T18:12:35.119Z",
+  "eventMatches": [
+    {
+      "polymarketEventId": "62657",
+      "kalshiEventId": "KXMEDIARELEASEUPONLY",
+      "confidence": 0.8310606060606059,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:17:09.468Z"
+    },
+    {
+      "polymarketEventId": "35908",
+      "kalshiEventId": "KXFEDCHAIRNOM-29",
+      "confidence": 0.825,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:17:09.468Z"
+    },
+    {
+      "polymarketEventId": "52166",
+      "kalshiEventId": "KXPUTINDJTLOCATION-29",
+      "confidence": 0.7745981087470449,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:17:09.468Z"
+    },
+    {
+      "polymarketEventId": "32224",
+      "kalshiEventId": "CONTROLS-2026",
+      "confidence": 0.7616868015705225,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:17:09.468Z"
+    },
+    {
+      "polymarketEventId": "32225",
+      "kalshiEventId": "CONTROLH-2026",
+      "confidence": 0.7609649122807018,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:17:09.468Z"
+    },
+    {
+      "polymarketEventId": "30829",
+      "kalshiEventId": "KXPRESNOMD-28",
+      "confidence": 0.7875,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:55:25.053Z"
+    },
+    {
+      "polymarketEventId": "31875",
+      "kalshiEventId": "KXPRESNOMR-28",
+      "confidence": 0.7875,
+      "source": "auto",
+      "createdAt": "2026-01-09T10:55:25.053Z"
+    },
+    {
+      "polymarketEventId": "74044",
+      "kalshiEventId": "KXNYCMINWAGE-27JAN01",
+      "confidence": 0.9953012048192771,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "83804",
+      "kalshiEventId": "KXTRUMPPARDON-27JAN01",
+      "confidence": 0.9849999999999999,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "98230",
+      "kalshiEventId": "KXCABOUT-29",
+      "confidence": 0.85,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "73969",
+      "kalshiEventId": "KXTRUMPOUT27-27",
+      "confidence": 0.8377439024390243,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "73107",
+      "kalshiEventId": "KXRECOGPALESTINE-27",
+      "confidence": 0.8270319740500462,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "73897",
+      "kalshiEventId": "KXTRUMPADMINLEAVE-26DEC31",
+      "confidence": 0.7846030274945938,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "90234",
+      "kalshiEventId": "KXTXRSEN2ND-26MAR03-2",
+      "confidence": 0.7669491525423728,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "90257",
+      "kalshiEventId": "KXTXRSEN3RD-26MAR03-3",
+      "confidence": 0.7669491525423728,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "73106",
+      "kalshiEventId": "KXUSAIRANAGREEMENT-27",
+      "confidence": 0.7642151162790698,
+      "source": "auto",
+      "createdAt": "2026-01-09T11:11:06.558Z"
+    },
+    {
+      "polymarketEventId": "45883",
+      "kalshiEventId": "KXFEDDECISION-28JAN",
+      "confidence": 0.8366666666666668,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:32:57.849Z"
+    },
+    {
+      "polymarketEventId": "45883",
+      "kalshiEventId": "KXFEDDECISION-27JAN",
+      "confidence": 0.8366666666666668,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:32:57.849Z"
+    },
+    {
+      "polymarketEventId": "67284",
+      "kalshiEventId": "KXFEDDECISION-27MAR",
+      "confidence": 0.8366666666666668,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:32:57.849Z"
+    },
+    {
+      "polymarketEventId": "75478",
+      "kalshiEventId": "KXFEDDECISION-27APR",
+      "confidence": 0.8366666666666668,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:32:57.849Z"
+    },
+    {
+      "polymarketEventId": "41353",
+      "kalshiEventId": "KXDJTVOSTARIFFS",
+      "confidence": 0.7766233766233765,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:32:57.849Z"
+    },
+    {
+      "polymarketEventId": "98369",
+      "kalshiEventId": "KXEUROVISION-26",
+      "confidence": 1,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "106016",
+      "kalshiEventId": "KXTAYLORSWIFTWEDDINGATTEND-28DEC31",
+      "confidence": 1,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "102065",
+      "kalshiEventId": "KXUNSEC-27JAN",
+      "confidence": 0.96,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "41438",
+      "kalshiEventId": "KXDUTCHCOALITION-27JAN01",
+      "confidence": 0.9485714285714285,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "79049",
+      "kalshiEventId": "TESLACEOCHANGE-26",
+      "confidence": 0.8911330049261084,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "84018",
+      "kalshiEventId": "KXNEWROLECEOAPPLE-27JAN",
+      "confidence": 0.8188679245283019,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "84940",
+      "kalshiEventId": "KXFDVRANGER-27JAN01",
+      "confidence": 0.7869918699186992,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "91919",
+      "kalshiEventId": "KXFDVFOGO-26DEC31",
+      "confidence": 0.7794871794871796,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "73096",
+      "kalshiEventId": "KXCLOSEHORMUZ-27JAN",
+      "confidence": 0.7791666666666666,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "49889",
+      "kalshiEventId": "KXMACCELL-27",
+      "confidence": 0.7783582089552239,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "78393",
+      "kalshiEventId": "KXKIMKBAREXAM-27",
+      "confidence": 0.7755102040816326,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "97681",
+      "kalshiEventId": "KXENGAGEMENTTRUDEAUPERRY-26",
+      "confidence": 0.7617250673854448,
+      "source": "auto",
+      "createdAt": "2026-01-09T12:38:45.543Z"
+    },
+    {
+      "polymarketEventId": "101772",
+      "kalshiEventId": "KXFEDDECISION-27JUN",
+      "confidence": 1,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "101958",
+      "kalshiEventId": "KXLEAVEGROUPRAMI-27",
+      "confidence": 0.8764705882352941,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "56544",
+      "kalshiEventId": "KXFDVFOOTBALLFUN-27JAN01",
+      "confidence": 0.8151975683890578,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "45883",
+      "kalshiEventId": "KXFEDDECISION-27JUL",
+      "confidence": 0.7714285714285714,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "67284",
+      "kalshiEventId": "KXFEDDECISION-27APR",
+      "confidence": 0.7672727272727272,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "75478",
+      "kalshiEventId": "KXFEDDECISION-27MAR",
+      "confidence": 0.7672727272727272,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "45883",
+      "kalshiEventId": "KXFEDDECISION-27JUN",
+      "confidence": 0.7542857142857143,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:10:48.222Z"
+    },
+    {
+      "polymarketEventId": "73866",
+      "kalshiEventId": "KXPARDONSYEAR-26DEC",
+      "confidence": 0.7788617886178861,
+      "source": "auto",
+      "createdAt": "2026-01-10T18:12:35.119Z"
+    }
+  ],
+  "marketMatches": [],
+  "rejectedPairs": []
+}
