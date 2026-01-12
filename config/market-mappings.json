@@ -1,0 +1,153 @@
+{
+  "static": [
+    {
+      "name": "Super Bowl 2026",
+      "category": "sports",
+      "polymarket": "super-bowl-champion-2026-731",
+      "kalshi": "KXSB-26",
+      "kalshiSeries": "KXSB"
+    },
+    {
+      "name": "UEFA Champions League",
+      "category": "sports",
+      "polymarket": "uefa-champions-league-winner",
+      "kalshi": "KXUCL-26",
+      "kalshiSeries": "KXUCL"
+    },
+    {
+      "name": "NBA Champion 2026",
+      "category": "sports",
+      "polymarket": "2026-nba-champion",
+      "kalshi": "KXNBA-26",
+      "kalshiSeries": "KXNBA"
+    },
+    {
+      "name": "NHL Stanley Cup 2026",
+      "category": "sports",
+      "polymarket": "2026-nhl-stanley-cup-champion",
+      "kalshi": "KXNHL-26",
+      "kalshiSeries": "KXNHL"
+    },
+    {
+      "name": "MLB World Series 2026",
+      "category": "sports",
+      "polymarket": "2026-mlb-world-series-winner",
+      "kalshi": "KXMLB-26",
+      "kalshiSeries": "KXMLB"
+    }
+  ],
+  "dynamic": [
+    {
+      "name": "NYC High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-nyc-on-{month}-{day}",
+        "example": "highest-temperature-in-nyc-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHNY",
+        "pattern": "KXHIGHNY-{yy}{MON}{dd}",
+        "example": "KXHIGHNY-26JAN12"
+      }
+    },
+    {
+      "name": "Miami High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-miami-on-{month}-{day}",
+        "example": "highest-temperature-in-miami-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHMIA",
+        "pattern": "KXHIGHMIA-{yy}{MON}{dd}",
+        "example": "KXHIGHMIA-26JAN12"
+      }
+    },
+    {
+      "name": "LA High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-la-on-{month}-{day}",
+        "example": "highest-temperature-in-la-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHLAX",
+        "pattern": "KXHIGHLAX-{yy}{MON}{dd}",
+        "example": "KXHIGHLAX-26JAN12"
+      }
+    },
+    {
+      "name": "Chicago High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-chicago-on-{month}-{day}",
+        "example": "highest-temperature-in-chicago-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHCHI",
+        "pattern": "KXHIGHCHI-{yy}{MON}{dd}",
+        "example": "KXHIGHCHI-26JAN12"
+      }
+    },
+    {
+      "name": "Denver High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-denver-on-{month}-{day}",
+        "example": "highest-temperature-in-denver-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHDEN",
+        "pattern": "KXHIGHDEN-{yy}{MON}{dd}",
+        "example": "KXHIGHDEN-26JAN12"
+      }
+    },
+    {
+      "name": "Austin High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-austin-on-{month}-{day}",
+        "example": "highest-temperature-in-austin-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHAUS",
+        "pattern": "KXHIGHAUS-{yy}{MON}{dd}",
+        "example": "KXHIGHAUS-26JAN12"
+      }
+    },
+    {
+      "name": "Philadelphia High Temperature",
+      "category": "weather",
+      "frequency": "daily",
+      "polymarket": {
+        "pattern": "highest-temperature-in-philadelphia-on-{month}-{day}",
+        "example": "highest-temperature-in-philadelphia-on-january-12"
+      },
+      "kalshi": {
+        "series": "KXHIGHPHIL",
+        "pattern": "KXHIGHPHIL-{yy}{MON}{dd}",
+        "example": "KXHIGHPHIL-26JAN12"
+      }
+    },
+    {
+      "name": "Fed Decision",
+      "category": "finance",
+      "frequency": "monthly",
+      "polymarket": {
+        "pattern": "fed-decision-in-{month}",
+        "example": "fed-decision-in-january"
+      },
+      "kalshi": {
+        "series": "KXFEDDECISION",
+        "pattern": "KXFEDDECISION-{yy}{MON}",
+        "example": "KXFEDDECISION-26JAN"
+      }
+    }
+  ]
+}
