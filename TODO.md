@@ -239,6 +239,86 @@ After:
 
 ---
 
+## Stage 4e: Production Refactoring (COMPLETED)
+
+**Goal:** Clean up codebase for production-quality readability, extensibility, and maintainability.
+
+### New Modules Created
+
+| File | Purpose |
+|------|---------|
+| `src/config/api.ts` | Centralized API constants, timeouts, thresholds |
+| `src/types/index.ts` | Type re-exports for cleaner imports |
+| `src/errors/index.ts` | Lightweight typed error classes |
+
+### Configuration Constants (`src/config/api.ts`)
+
+Replaced magic numbers throughout codebase with named constants:
+
+```typescript
+export const POLYMARKET = {
+  GAMMA_API_URL: 'https://gamma-api.polymarket.com',
+  CLOB_API_URL: 'https://clob.polymarket.com',
+  BATCH_SIZE: 200,
+  TIMEOUT_MS: 30_000,
+} as const;
+
+export const KALSHI = {
+  API_URL: 'https://api.elections.kalshi.com/trade-api/v2',
+  BATCH_SIZE: 200,
+  TIMEOUT_MS: 30_000,
+} as const;
+
+export const SCANNER = {
+  RATE_LIMIT_DELAY_MS: 100,
+  DYNAMIC_SCAN_DAYS: 3,
+  MAX_LIQUIDITY_ANALYSIS: 10,
+  POLL_INTERVAL_MS: 60_000,
+} as const;
+
+export const DISPLAY = {
+  SEPARATOR_WIDTH: 70,
+  PREVIEW_LIMIT: 3,
+  PRICE_LEVELS_PREVIEW: 3,
+  PRICE_LEVELS_FULL: 5,
+} as const;
+```
+
+### Typed Error Hierarchy (`src/errors/index.ts`)
+
+```typescript
+PredictionMarketError (base)
+├── ApiError          // Platform API failures
+├── DataValidationError // Parsing/validation issues
+├── MatchingError     // Event/market matching problems
+└── ArbitrageError    // Calculation errors
+```
+
+### Refactored Files
+
+| File | Changes |
+|------|---------|
+| `src/orderbook/fetcher.ts` | Used centralized constants, extracted parsing helpers |
+| `src/arbitrage/liquidity-analyzer.ts` | Broke into smaller functions, extracted formatters |
+| `src/scripts/find-matched-markets.ts` | Removed type shadows, used config constants, extracted display functions |
+
+### Key Improvements
+
+1. **Removed type shadowing** - Local `MarketData` interface was shadowing import from `market-matcher.ts`
+2. **Extracted helper functions** - Large functions broken into focused units
+3. **Centralized configuration** - All magic numbers moved to config module
+4. **Improved type organization** - Re-exports allow cleaner imports
+5. **Added error context** - Typed errors include platform, status codes, and metadata
+
+### Verification
+
+All scripts verified working after refactoring:
+```bash
+npx tsx src/scripts/find-matched-markets.ts  # ✓ Full pipeline works
+```
+
+---
+
 ## Stage 5: Scanner CLI (TODO)
 
 - [ ] Create `src/config.ts`:
@@ -271,11 +351,15 @@ After:
 ```
 src/
 ├── scanner.ts                    # Main entry (TODO)
-├── config.ts                     # Configuration (TODO)
+├── config/
+│   └── api.ts                    # API URLs, timeouts, thresholds
 ├── types/
+│   ├── index.ts                  # Type re-exports
 │   ├── polymarket.ts
 │   ├── kalshi.ts
 │   └── unified.ts
+├── errors/
+│   └── index.ts                  # Typed error classes
 ├── connectors/
 │   ├── polymarket-connector.ts
 │   └── kalshi-connector.ts

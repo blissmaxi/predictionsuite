@@ -3,46 +3,56 @@
  *
  * Unified interface for fetching order books from Polymarket and Kalshi.
  * Normalizes data into a common format for liquidity analysis.
+ *
+ * Key concepts:
+ * - Bids: Prices buyers are willing to pay (sorted highest first)
+ * - Asks: Prices sellers are offering (sorted lowest first)
+ * - YES/NO: Binary outcome sides of a prediction market
  */
 
+import { POLYMARKET, KALSHI } from '../config/api.js';
+import { ApiError, getErrorMessage } from '../errors/index.js';
 import type { ClobOrderBook } from '../types/polymarket.js';
 import type { KalshiOrderBook } from '../types/kalshi.js';
 
 // ============ Types ============
 
 export interface OrderBookLevel {
-  price: number;  // 0-1 normalized
-  size: number;   // Number of contracts available
+  /** Price in 0-1 scale (probability) */
+  price: number;
+  /** Number of contracts available at this price */
+  size: number;
 }
 
 export interface UnifiedOrderBook {
   platform: 'polymarket' | 'kalshi';
   marketId: string;
-  yesBids: OrderBookLevel[];  // Sorted best (highest) first
-  yesAsks: OrderBookLevel[];  // Sorted best (lowest) first
-  noBids: OrderBookLevel[];   // Sorted best (highest) first
-  noAsks: OrderBookLevel[];   // Sorted best (lowest) first
+  /** Bids for YES outcome (sorted highest first) */
+  yesBids: OrderBookLevel[];
+  /** Asks for YES outcome (sorted lowest first) */
+  yesAsks: OrderBookLevel[];
+  /** Bids for NO outcome (sorted highest first) */
+  noBids: OrderBookLevel[];
+  /** Asks for NO outcome (sorted lowest first) */
+  noAsks: OrderBookLevel[];
   fetchedAt: Date;
 }
 
-// ============ Config ============
-
-const POLYMARKET_CLOB_URL = 'https://clob.polymarket.com';
-const KALSHI_API_URL = 'https://api.elections.kalshi.com/trade-api/v2';
-
-// ============ Polymarket Fetching ============
+// ============ Polymarket ============
 
 /**
- * Fetch order book for a Polymarket token.
+ * Fetch order book for a Polymarket market.
  *
- * @param tokenId The CLOB token ID (from clobTokenIds array)
- * @param side 'yes' or 'no' - which outcome this token represents
+ * Polymarket uses separate token IDs for YES and NO outcomes.
+ * Each token has its own order book that must be fetched independently.
+ *
+ * @param yesTokenId - CLOB token ID for YES outcome
+ * @param noTokenId - CLOB token ID for NO outcome
  */
 export async function fetchPolymarketOrderBook(
   yesTokenId: string,
   noTokenId: string
 ): Promise<UnifiedOrderBook> {
-  // Fetch both YES and NO order books
   const [yesBook, noBook] = await Promise.all([
     fetchPolymarketSingleBook(yesTokenId),
     fetchPolymarketSingleBook(noTokenId),
@@ -51,141 +61,165 @@ export async function fetchPolymarketOrderBook(
   return {
     platform: 'polymarket',
     marketId: yesTokenId,
-    // YES token: bids are people wanting to buy YES, asks are people selling YES
     yesBids: yesBook.bids,
     yesAsks: yesBook.asks,
-    // NO token: bids are people wanting to buy NO, asks are people selling NO
     noBids: noBook.bids,
     noAsks: noBook.asks,
     fetchedAt: new Date(),
   };
 }
 
+/**
+ * Fetch order book for a single Polymarket token.
+ */
 async function fetchPolymarketSingleBook(tokenId: string): Promise<{
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
 }> {
+  const emptyBook = { bids: [], asks: [] };
+
   try {
-    const response = await fetch(`${POLYMARKET_CLOB_URL}/book?token_id=${tokenId}`);
+    const url = `${POLYMARKET.CLOB_API_URL}/book?token_id=${tokenId}`;
+    const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`Polymarket API error: ${response.status}`);
+      throw new ApiError(
+        `Failed to fetch order book`,
+        'polymarket',
+        response.status,
+        { tokenId }
+      );
     }
 
     const data = (await response.json()) as ClobOrderBook;
 
-    // Parse and sort bids (highest first for buying)
-    const bids: OrderBookLevel[] = (data.bids || [])
-      .map(level => ({
-        price: parseFloat(level.price),
-        size: parseFloat(level.size),
-      }))
-      .filter(l => l.size > 0)
-      .sort((a, b) => b.price - a.price);
-
-    // Parse and sort asks (lowest first for selling)
-    const asks: OrderBookLevel[] = (data.asks || [])
-      .map(level => ({
-        price: parseFloat(level.price),
-        size: parseFloat(level.size),
-      }))
-      .filter(l => l.size > 0)
-      .sort((a, b) => a.price - b.price);
-
-    return { bids, asks };
+    return {
+      bids: parseOrderBookLevels(data.bids, 'descending'),
+      asks: parseOrderBookLevels(data.asks, 'ascending'),
+    };
   } catch (error) {
-    // Return empty book on error
-    return { bids: [], asks: [] };
+    // Silently return empty book - caller handles no-liquidity case
+    return emptyBook;
   }
 }
 
-// ============ Kalshi Fetching ============
+// ============ Kalshi ============
 
 /**
  * Fetch order book for a Kalshi market.
  *
- * @param ticker The market ticker (e.g., "KXSB-26-KC")
+ * Kalshi's order book shows resting bids for each outcome.
+ * To derive asks, we use the complement relationship:
+ * - A bid of X for NO implies an ask of (1-X) for YES
+ * - A bid of X for YES implies an ask of (1-X) for NO
+ *
+ * @param ticker - Market ticker (e.g., "KXSB-26-KC")
  */
 export async function fetchKalshiOrderBook(ticker: string): Promise<UnifiedOrderBook> {
+  const emptyBook = createEmptyOrderBook('kalshi', ticker);
+
   try {
-    const response = await fetch(`${KALSHI_API_URL}/markets/${ticker}/orderbook`);
+    const url = `${KALSHI.API_URL}/markets/${ticker}/orderbook`;
+    const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`Kalshi API error: ${response.status}`);
+      throw new ApiError(
+        `Failed to fetch order book`,
+        'kalshi',
+        response.status,
+        { ticker }
+      );
     }
 
     const data = (await response.json()) as KalshiOrderBook;
-
-    // Kalshi provides YES and NO sides directly
-    // Use dollars format (0-1 scale) if available, otherwise convert from cents
     const yesLevels = data.orderbook.yes_dollars || [];
     const noLevels = data.orderbook.no_dollars || [];
 
-    // YES side: these are prices people are willing to pay for YES
-    // In Kalshi, the order book shows bid prices (what buyers will pay)
-    const yesBids: OrderBookLevel[] = yesLevels
-      .map(([priceStr, qty]) => ({
-        price: parseFloat(priceStr),
-        size: qty,
-      }))
-      .filter(l => l.size > 0)
-      .sort((a, b) => b.price - a.price);
-
-    // To get YES asks, we derive from NO bids
-    // If someone bids X for NO, they're effectively offering (1-X) for YES
-    const yesAsks: OrderBookLevel[] = noLevels
-      .map(([priceStr, qty]) => ({
-        price: 1 - parseFloat(priceStr),
-        size: qty,
-      }))
-      .filter(l => l.size > 0 && l.price > 0)
-      .sort((a, b) => a.price - b.price);
-
-    // NO side: prices people are willing to pay for NO
-    const noBids: OrderBookLevel[] = noLevels
-      .map(([priceStr, qty]) => ({
-        price: parseFloat(priceStr),
-        size: qty,
-      }))
-      .filter(l => l.size > 0)
-      .sort((a, b) => b.price - a.price);
-
-    // NO asks derived from YES bids
-    const noAsks: OrderBookLevel[] = yesLevels
-      .map(([priceStr, qty]) => ({
-        price: 1 - parseFloat(priceStr),
-        size: qty,
-      }))
-      .filter(l => l.size > 0 && l.price > 0)
-      .sort((a, b) => a.price - b.price);
-
     return {
       platform: 'kalshi',
       marketId: ticker,
-      yesBids,
-      yesAsks,
-      noBids,
-      noAsks,
+      yesBids: parseKalshiLevels(yesLevels, 'direct', 'descending'),
+      yesAsks: parseKalshiLevels(noLevels, 'complement', 'ascending'),
+      noBids: parseKalshiLevels(noLevels, 'direct', 'descending'),
+      noAsks: parseKalshiLevels(yesLevels, 'complement', 'ascending'),
       fetchedAt: new Date(),
     };
   } catch (error) {
-    // Return empty book on error
-    return {
-      platform: 'kalshi',
-      marketId: ticker,
-      yesBids: [],
-      yesAsks: [],
-      noBids: [],
-      noAsks: [],
-      fetchedAt: new Date(),
-    };
+    // Silently return empty book - caller handles no-liquidity case
+    return emptyBook;
   }
 }
 
-// ============ Helpers ============
+// ============ Parsing Helpers ============
 
 /**
- * Check if an order book has any liquidity.
+ * Parse Polymarket order book levels from string format.
+ */
+function parseOrderBookLevels(
+  levels: Array<{ price: string; size: string }> | undefined,
+  sortOrder: 'ascending' | 'descending'
+): OrderBookLevel[] {
+  if (!levels) return [];
+
+  const parsed = levels
+    .map((level) => ({
+      price: parseFloat(level.price),
+      size: parseFloat(level.size),
+    }))
+    .filter((l) => l.size > 0 && l.price > 0 && l.price < 1);
+
+  return sortOrder === 'descending'
+    ? parsed.sort((a, b) => b.price - a.price)
+    : parsed.sort((a, b) => a.price - b.price);
+}
+
+/**
+ * Parse Kalshi order book levels.
+ *
+ * @param levels - Raw levels as [priceString, quantity] tuples
+ * @param priceMode - 'direct' uses price as-is, 'complement' uses (1 - price)
+ * @param sortOrder - How to sort the result
+ */
+function parseKalshiLevels(
+  levels: Array<[string, number]>,
+  priceMode: 'direct' | 'complement',
+  sortOrder: 'ascending' | 'descending'
+): OrderBookLevel[] {
+  const parsed = levels
+    .map(([priceStr, qty]) => {
+      const rawPrice = parseFloat(priceStr);
+      const price = priceMode === 'complement' ? 1 - rawPrice : rawPrice;
+      return { price, size: qty };
+    })
+    .filter((l) => l.size > 0 && l.price > 0 && l.price < 1);
+
+  return sortOrder === 'descending'
+    ? parsed.sort((a, b) => b.price - a.price)
+    : parsed.sort((a, b) => a.price - b.price);
+}
+
+/**
+ * Create an empty order book (used for error cases).
+ */
+function createEmptyOrderBook(
+  platform: 'polymarket' | 'kalshi',
+  marketId: string
+): UnifiedOrderBook {
+  return {
+    platform,
+    marketId,
+    yesBids: [],
+    yesAsks: [],
+    noBids: [],
+    noAsks: [],
+    fetchedAt: new Date(),
+  };
+}
+
+// ============ Analysis Helpers ============
+
+/**
+ * Check if an order book has any liquidity on any side.
  */
 export function hasLiquidity(book: UnifiedOrderBook): boolean {
   return (
@@ -198,6 +232,7 @@ export function hasLiquidity(book: UnifiedOrderBook): boolean {
 
 /**
  * Get best bid/ask prices from an order book.
+ * Returns null for sides with no liquidity.
  */
 export function getBestPrices(book: UnifiedOrderBook): {
   yesBestBid: number | null;
@@ -222,10 +257,29 @@ export function getDepth(book: UnifiedOrderBook): {
   noBidDepth: number;
   noAskDepth: number;
 } {
+  const sumSize = (levels: OrderBookLevel[]) =>
+    levels.reduce((sum, l) => sum + l.size, 0);
+
   return {
-    yesBidDepth: book.yesBids.reduce((sum, l) => sum + l.size, 0),
-    yesAskDepth: book.yesAsks.reduce((sum, l) => sum + l.size, 0),
-    noBidDepth: book.noBids.reduce((sum, l) => sum + l.size, 0),
-    noAskDepth: book.noAsks.reduce((sum, l) => sum + l.size, 0),
+    yesBidDepth: sumSize(book.yesBids),
+    yesAskDepth: sumSize(book.yesAsks),
+    noBidDepth: sumSize(book.noBids),
+    noAskDepth: sumSize(book.noAsks),
   };
+}
+
+/**
+ * Calculate the spread between best bid and ask for an outcome.
+ * Returns null if either side has no liquidity.
+ */
+export function getSpread(
+  book: UnifiedOrderBook,
+  outcome: 'yes' | 'no'
+): number | null {
+  const bids = outcome === 'yes' ? book.yesBids : book.noBids;
+  const asks = outcome === 'yes' ? book.yesAsks : book.noAsks;
+
+  if (bids.length === 0 || asks.length === 0) return null;
+
+  return asks[0].price - bids[0].price;
 }
