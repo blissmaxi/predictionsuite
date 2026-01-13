@@ -127,10 +127,12 @@ export function findStaticByKalshi(ticker: string): StaticMapping | null {
  * Generate Polymarket slug from dynamic pattern and date.
  */
 function generatePolymarketSlug(pattern: string, date: Date): string {
+  const year = date.getFullYear().toString();
   const month = MONTHS_FULL[date.getMonth()];
   const day = date.getDate().toString();
 
   return pattern
+    .replace('{year}', year)
     .replace('{month}', month)
     .replace('{day}', day);
 }
@@ -156,33 +158,54 @@ export function matchDynamicPolymarket(slug: string): MatchResult | null {
   const mappings = loadMappings();
 
   for (const dynamic of mappings.dynamic) {
-    // Build regex from pattern
-    const regexPattern = dynamic.polymarket.pattern
-      .replace('{month}', '(\\w+)')
-      .replace('{day}', '(\\d+)');
+    // Build regex from pattern - escape special chars and replace placeholders
+    let regexPattern = dynamic.polymarket.pattern
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+      .replace('\\{year\\}', '(\\d{4})')
+      .replace('\\{month\\}', '(\\w+)')
+      .replace('\\{day\\}', '(\\d+)');
 
     const regex = new RegExp(`^${regexPattern}$`, 'i');
     const match = slug.match(regex);
 
     if (match) {
-      // Extract date from match
-      const monthStr = match[1].toLowerCase();
-      const monthIdx = MONTHS_FULL.indexOf(monthStr);
-      const day = parseInt(match[2], 10);
+      let date: Date;
 
-      if (monthIdx >= 0 && !isNaN(day)) {
+      if (dynamic.frequency === 'yearly') {
+        // For yearly patterns, extract year from slug
+        const yearMatch = slug.match(/(\d{4})/);
+        const year = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
+        date = new Date(year, 0, 1); // Jan 1 of that year
+      } else if (dynamic.frequency === 'daily') {
+        // Extract month and day
+        const monthStr = match[1]?.toLowerCase();
+        const monthIdx = MONTHS_FULL.indexOf(monthStr);
+        const day = parseInt(match[2], 10);
+
+        if (monthIdx < 0 || isNaN(day)) continue;
+
         const year = new Date().getFullYear();
-        const date = new Date(year, monthIdx, day);
+        date = new Date(year, monthIdx, day);
+      } else {
+        // Monthly/quarterly - extract month
+        const monthStr = match[1]?.toLowerCase();
+        const monthIdx = MONTHS_FULL.indexOf(monthStr);
 
-        return {
-          name: dynamic.name,
-          category: dynamic.category,
-          type: 'dynamic',
-          polymarketSlug: slug,
-          kalshiTicker: generateKalshiTicker(dynamic.kalshi.pattern, date),
-          date,
-        };
+        if (monthIdx < 0) continue;
+
+        const year = new Date().getFullYear();
+        date = new Date(year, monthIdx, 1);
       }
+
+      return {
+        name: dynamic.name,
+        category: dynamic.category,
+        type: 'dynamic',
+        polymarketSlug: slug,
+        kalshiTicker: generateKalshiTicker(dynamic.kalshi.pattern, date),
+        kalshiSeries: dynamic.kalshi.series,
+        date,
+      };
     }
   }
 
@@ -295,7 +318,6 @@ export function generateDynamicMatches(
     // Filter by category if specified
     if (category && dynamic.category !== category) continue;
 
-    // Only generate for daily patterns (for now)
     if (dynamic.frequency === 'daily') {
       results.push({
         name: dynamic.name,
@@ -303,6 +325,43 @@ export function generateDynamicMatches(
         type: 'dynamic',
         polymarketSlug: generatePolymarketSlug(dynamic.polymarket.pattern, date),
         kalshiTicker: generateKalshiTicker(dynamic.kalshi.pattern, date),
+        kalshiSeries: dynamic.kalshi.series,
+        date,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Generate all yearly dynamic matches for a given year.
+ *
+ * @param year The year to generate matches for (default: current year)
+ * @param category Optional category filter
+ * @returns Array of match results
+ */
+export function generateYearlyMatches(
+  year?: number,
+  category?: string
+): MatchResult[] {
+  const mappings = loadMappings();
+  const results: MatchResult[] = [];
+  const targetYear = year || new Date().getFullYear();
+  const date = new Date(targetYear, 0, 1);
+
+  for (const dynamic of mappings.dynamic) {
+    // Filter by category if specified
+    if (category && dynamic.category !== category) continue;
+
+    if (dynamic.frequency === 'yearly') {
+      results.push({
+        name: dynamic.name,
+        category: dynamic.category,
+        type: 'dynamic',
+        polymarketSlug: generatePolymarketSlug(dynamic.polymarket.pattern, date),
+        kalshiTicker: generateKalshiTicker(dynamic.kalshi.pattern, date),
+        kalshiSeries: dynamic.kalshi.series,
         date,
       });
     }

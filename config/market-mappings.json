@@ -1,42 +1,76 @@
 {
-  "static": [
+  "static": [],
+  "dynamic": [
     {
-      "name": "Super Bowl 2026",
+      "name": "Super Bowl",
       "category": "sports",
-      "polymarket": "super-bowl-champion-2026-731",
-      "kalshi": "KXSB-26",
-      "kalshiSeries": "KXSB"
+      "frequency": "yearly",
+      "polymarket": {
+        "pattern": "super-bowl-champion-{year}-731",
+        "example": "super-bowl-champion-2026-731"
+      },
+      "kalshi": {
+        "series": "KXSB",
+        "pattern": "KXSB-{yy}",
+        "example": "KXSB-26"
+      }
+    },
+    {
+      "name": "NBA Champion",
+      "category": "sports",
+      "frequency": "yearly",
+      "polymarket": {
+        "pattern": "{year}-nba-champion",
+        "example": "2026-nba-champion"
+      },
+      "kalshi": {
+        "series": "KXNBA",
+        "pattern": "KXNBA-{yy}",
+        "example": "KXNBA-26"
+      }
+    },
+    {
+      "name": "NHL Stanley Cup",
+      "category": "sports",
+      "frequency": "yearly",
+      "polymarket": {
+        "pattern": "{year}-nhl-stanley-cup-champion",
+        "example": "2026-nhl-stanley-cup-champion"
+      },
+      "kalshi": {
+        "series": "KXNHL",
+        "pattern": "KXNHL-{yy}",
+        "example": "KXNHL-26"
+      }
+    },
+    {
+      "name": "MLB World Series",
+      "category": "sports",
+      "frequency": "yearly",
+      "polymarket": {
+        "pattern": "{year}-mlb-world-series-winner",
+        "example": "2026-mlb-world-series-winner"
+      },
+      "kalshi": {
+        "series": "KXMLB",
+        "pattern": "KXMLB-{yy}",
+        "example": "KXMLB-26"
+      }
     },
     {
       "name": "UEFA Champions League",
       "category": "sports",
-      "polymarket": "uefa-champions-league-winner",
-      "kalshi": "KXUCL-26",
-      "kalshiSeries": "KXUCL"
+      "frequency": "yearly",
+      "polymarket": {
+        "pattern": "uefa-champions-league-winner",
+        "example": "uefa-champions-league-winner"
+      },
+      "kalshi": {
+        "series": "KXUCL",
+        "pattern": "KXUCL-{yy}",
+        "example": "KXUCL-26"
+      }
     },
-    {
-      "name": "NBA Champion 2026",
-      "category": "sports",
-      "polymarket": "2026-nba-champion",
-      "kalshi": "KXNBA-26",
-      "kalshiSeries": "KXNBA"
-    },
-    {
-      "name": "NHL Stanley Cup 2026",
-      "category": "sports",
-      "polymarket": "2026-nhl-stanley-cup-champion",
-      "kalshi": "KXNHL-26",
-      "kalshiSeries": "KXNHL"
-    },
-    {
-      "name": "MLB World Series 2026",
-      "category": "sports",
-      "polymarket": "2026-mlb-world-series-winner",
-      "kalshi": "KXMLB-26",
-      "kalshiSeries": "KXMLB"
-    }
-  ],
-  "dynamic": [
     {
       "name": "NYC High Temperature",
       "category": "weather",

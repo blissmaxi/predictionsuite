@@ -13,6 +13,7 @@
     "list:event-names": "npx tsx src/scripts/list-event-names.ts",
     "test:weather": "npx tsx src/scripts/test-weather-matching.ts",
     "scan:weather": "npx tsx src/scripts/weather-arb-scanner.ts",
+    "test-orderbook": "npx tsx src/scripts/test-orderbook.ts",
     "scan": "npx tsx src/scanner.ts"
   },
   "dependencies": {
