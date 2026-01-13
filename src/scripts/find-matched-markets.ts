@@ -41,6 +41,11 @@ import {
   type LiquidityAnalysis,
 } from '../arbitrage/liquidity-analyzer.js';
 import { POLYMARKET, KALSHI, SCANNER, DISPLAY } from '../config/api.js';
+import {
+  fetchNbaGameMatches,
+  formatGameMatch,
+  type NbaGameMatch,
+} from '../matching/nba-game-matcher.js';
 
 // ============ Configuration ============
 
@@ -292,6 +297,210 @@ async function processDynamicEvents(): Promise<MatchedPair[]> {
   return results;
 }
 
+// ============ NBA Games ============
+
+async function processNbaGames(): Promise<MatchedPair[]> {
+  console.log('');
+  printSubheader(`Fetching NBA Games (next ${SCANNER.DYNAMIC_SCAN_DAYS} days)...`);
+
+  const today = new Date();
+  const endDate = new Date();
+  endDate.setDate(today.getDate() + SCANNER.DYNAMIC_SCAN_DAYS);
+
+  const games = await fetchNbaGameMatches(today, endDate);
+  console.log(`Found ${games.length} NBA games on Polymarket`);
+  console.log('');
+
+  const results: MatchedPair[] = [];
+
+  for (const game of games) {
+    process.stdout.write(`  ${formatGameMatch(game)}... `);
+
+    const result = await processNbaGame(game);
+    results.push(result);
+
+    console.log(getNbaGameStatus(result));
+    await delay(SCANNER.RATE_LIMIT_DELAY_MS);
+  }
+
+  return results;
+}
+
+async function processNbaGame(game: NbaGameMatch): Promise<MatchedPair> {
+  const [polyData, kalshiData] = await Promise.all([
+    fetchPolymarketEvent(game.polymarketSlug),
+    fetchKalshiNbaGame(game.kalshiTicker),
+  ]);
+
+  let marketPairs: MarketPair[] | undefined;
+  if (polyData && kalshiData) {
+    marketPairs = matchNbaGameMarkets(
+      polyData.markets,
+      kalshiData.markets,
+      game
+    );
+  }
+
+  return {
+    match: {
+      name: `${game.awayTeam} @ ${game.homeTeam}`,
+      category: 'nba_game',
+      type: 'dynamic',
+      polymarketSlug: game.polymarketSlug,
+      kalshiTicker: game.kalshiTicker,
+      kalshiSeries: game.kalshiSeries,
+      date: game.date,
+    },
+    polymarket: {
+      found: !!polyData,
+      title: polyData?.title,
+      markets: polyData?.markets,
+    },
+    kalshi: {
+      found: !!kalshiData,
+      title: kalshiData?.title,
+      markets: kalshiData?.markets,
+    },
+    marketPairs,
+  };
+}
+
+/**
+ * Fetch NBA game markets from Kalshi.
+ */
+async function fetchKalshiNbaGame(ticker: string): Promise<EventFetchResult | null> {
+  try {
+    // Fetch markets directly using the ticker prefix
+    const response = await fetch(
+      `${KALSHI.API_URL}/markets?series_ticker=KXNBAGAME&limit=100`
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const markets: MarketData[] = [];
+
+    // Find markets matching this game's ticker
+    for (const market of data.markets || []) {
+      if (market.ticker?.startsWith(ticker)) {
+        markets.push({
+          question: market.yes_sub_title || market.title || 'Unknown',
+          yesPrice: parseFloat(market.last_price_dollars || '0') || 0,
+          volume: market.volume || 0,
+          ticker: market.ticker,
+        });
+      }
+    }
+
+    if (markets.length === 0) return null;
+
+    return {
+      title: `NBA Game: ${ticker}`,
+      markets,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Match NBA game moneyline markets between platforms.
+ */
+function matchNbaGameMarkets(
+  polyMarkets: MarketData[],
+  kalshiMarkets: MarketData[],
+  game: NbaGameMatch
+): MarketPair[] {
+  const pairs: MarketPair[] = [];
+
+  // Find moneyline market on Polymarket (slug matches event slug exactly)
+  const polyMoneyline = polyMarkets.find(
+    (m) => m.question?.toLowerCase().includes('vs.') &&
+           !m.question?.toLowerCase().includes('spread') &&
+           !m.question?.toLowerCase().includes('o/u') &&
+           !m.question?.toLowerCase().includes('over') &&
+           !m.question?.toLowerCase().includes('points') &&
+           !m.question?.toLowerCase().includes('rebounds') &&
+           !m.question?.toLowerCase().includes('assists')
+  );
+
+  if (!polyMoneyline) return pairs;
+
+  // Find corresponding Kalshi markets (one for each team)
+  const awayMarket = kalshiMarkets.find(
+    (m) => m.ticker?.endsWith(`-${game.awayCode.toUpperCase()}`)
+  );
+  const homeMarket = kalshiMarkets.find(
+    (m) => m.ticker?.endsWith(`-${game.homeCode.toUpperCase()}`)
+  );
+
+  if (!awayMarket || !homeMarket) return pairs;
+
+  // Away team: Poly YES = away wins, Kalshi YES = away wins
+  const awayPolyYes = polyMoneyline.yesPrice;
+  const awayPolyNo = 1 - awayPolyYes;
+  const awayKalshiYes = awayMarket.yesPrice;
+  const awayKalshiNo = 1 - awayKalshiYes;
+  const awaySpread = Math.abs(awayPolyYes - awayKalshiYes);
+
+  pairs.push({
+    matchedEntity: game.awayTeam,
+    eventName: `NBA: ${game.awayCode.toUpperCase()} @ ${game.homeCode.toUpperCase()}`,
+    polymarket: {
+      question: `${game.awayTeam} wins`,
+      yesPrice: awayPolyYes,
+      noPrice: awayPolyNo,
+      tokenIds: polyMoneyline.tokenIds,
+    },
+    kalshi: {
+      question: awayMarket.question,
+      yesPrice: awayKalshiYes,
+      noPrice: awayKalshiNo,
+      ticker: awayMarket.ticker,
+    },
+    confidence: 1.0,
+    spread: awaySpread,
+  });
+
+  // Home team: Poly NO = home wins, Kalshi YES = home wins
+  const homePolyYes = 1 - polyMoneyline.yesPrice; // Home wins = away loses
+  const homePolyNo = 1 - homePolyYes;
+  const homeKalshiYes = homeMarket.yesPrice;
+  const homeKalshiNo = 1 - homeKalshiYes;
+  const homeSpread = Math.abs(homePolyYes - homeKalshiYes);
+
+  pairs.push({
+    matchedEntity: game.homeTeam,
+    eventName: `NBA: ${game.awayCode.toUpperCase()} @ ${game.homeCode.toUpperCase()}`,
+    polymarket: {
+      question: `${game.homeTeam} wins`,
+      yesPrice: homePolyYes,
+      noPrice: homePolyNo,
+      tokenIds: polyMoneyline.tokenIds,
+    },
+    kalshi: {
+      question: homeMarket.question,
+      yesPrice: homeKalshiYes,
+      noPrice: homeKalshiNo,
+      ticker: homeMarket.ticker,
+    },
+    confidence: 1.0,
+    spread: homeSpread,
+  });
+
+  return pairs;
+}
+
+function getNbaGameStatus(pair: MatchedPair): string {
+  const pairCount = pair.marketPairs?.length || 0;
+  if (pair.polymarket.found && pair.kalshi.found) {
+    return `✓ Both (${pairCount} markets)`;
+  }
+  if (pair.polymarket.found) return '○ Poly only';
+  if (pair.kalshi.found) return '○ Kalshi only';
+  return '✗ Neither';
+}
+
 // ============ Results Display ============
 
 function displayMatchedPairs(pairs: MatchedPair[]): void {
@@ -511,7 +720,8 @@ async function main(): Promise<void> {
   // Process all events
   const yearlyPairs = await processYearlyEvents();
   const dynamicPairs = await processDynamicEvents();
-  const allMatchedPairs = [...yearlyPairs, ...dynamicPairs];
+  const nbaGamePairs = await processNbaGames();
+  const allMatchedPairs = [...yearlyPairs, ...dynamicPairs, ...nbaGamePairs];
 
   // Display matched pairs
   displayMatchedPairs(allMatchedPairs);
