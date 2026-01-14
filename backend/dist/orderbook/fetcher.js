@@ -53,8 +53,8 @@ async function fetchPolymarketSingleBook(tokenId) {
             asks: parseOrderBookLevels(data.asks, 'ascending'),
         };
     }
-    catch (error) {
-        // Silently return empty book - caller handles no-liquidity case
+    catch {
+        // Return empty book - caller handles no-liquidity case
         return emptyBook;
     }
 }
@@ -90,8 +90,8 @@ export async function fetchKalshiOrderBook(ticker) {
             fetchedAt: new Date(),
         };
     }
-    catch (error) {
-        // Silently return empty book - caller handles no-liquidity case
+    catch {
+        // Return empty book - caller handles no-liquidity case
         return emptyBook;
     }
 }

@@ -49,6 +49,8 @@ export interface OpportunityDto {
     status: 'available' | 'spread_closed' | 'no_liquidity' | 'not_analyzed';
     limitedBy: string | null;
   };
+  roi: number | null;  // Return on investment (profit / investment * 100)
+  apr: number | null;  // Annualized return based on time to resolution
   lastUpdated: string;
 }
 
@@ -185,6 +187,21 @@ function transformOpportunity(
   // Get earliest resolution date from either platform
   const timeToResolution = getEarliestEndDate(pair.polymarket.endDate, pair.kalshi.endDate);
 
+  // Calculate ROI and APR
+  const maxProfit = liquidity?.maxProfit ?? 0;
+  const maxInvestment = liquidity?.maxInvestment ?? 0;
+  const roi = maxInvestment > 0 ? (maxProfit / maxInvestment) * 100 : null;
+
+  let apr: number | null = null;
+  if (roi !== null && timeToResolution) {
+    const now = Date.now();
+    const resolutionTime = new Date(timeToResolution).getTime();
+    const daysToResolution = (resolutionTime - now) / (1000 * 60 * 60 * 24);
+    if (daysToResolution > 0) {
+      apr = roi * (365 / daysToResolution);
+    }
+  }
+
   return {
     id: generateOpportunityId(opp),
     eventName: pair.eventName || 'Unknown Event',
@@ -217,6 +234,8 @@ function transformOpportunity(
       kalshi: getKalshiUrl(pair.kalshi.ticker, pair.kalshi.seriesTicker),
     },
     liquidity: getLiquidityStatus(opp),
+    roi,
+    apr,
     lastUpdated: scannedAt.toISOString(),
   };
 }

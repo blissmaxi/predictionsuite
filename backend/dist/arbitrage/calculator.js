@@ -17,6 +17,10 @@ export function calculateArbitrage(pair) {
     const polyNo = pair.polymarket.noPrice;
     const kalshiYes = pair.kalshi.yesPrice;
     const kalshiNo = pair.kalshi.noPrice;
+    // Skip pairs where either platform has no price (market not yet listed)
+    if (polyYes <= 0 || kalshiYes <= 0) {
+        return null;
+    }
     // Check for guaranteed arbitrage (rare but possible)
     // Buy YES on one platform + NO on other < $1 = guaranteed profit
     // Strategy 1: Buy Polymarket YES + Buy Kalshi NO
@@ -88,6 +92,76 @@ export function findArbitrageOpportunities(pairs) {
         if (b.type === 'guaranteed' && a.type !== 'guaranteed')
             return 1;
         // Then sort by profit percentage (descending)
+        return b.profitPct - a.profitPct;
+    });
+    return opportunities;
+}
+/**
+ * Create opportunities for ALL market pairs, including those without significant spreads.
+ * This is used to display all matched markets in the frontend.
+ *
+ * @param pairs List of matched market pairs
+ * @returns Array of all opportunities (with or without arbitrage potential)
+ */
+export function createOpportunitiesFromAllPairs(pairs) {
+    const opportunities = [];
+    for (const pair of pairs) {
+        const polyYes = pair.polymarket.yesPrice;
+        const polyNo = pair.polymarket.noPrice;
+        const kalshiYes = pair.kalshi.yesPrice;
+        const kalshiNo = pair.kalshi.noPrice;
+        // Skip pairs where either platform has no price (market not yet listed)
+        if (polyYes <= 0 || kalshiYes <= 0) {
+            continue;
+        }
+        // Check for guaranteed arbitrage
+        const cost1 = polyYes + kalshiNo;
+        const cost2 = kalshiYes + polyNo;
+        if (cost1 < 1) {
+            const profit = 1 - cost1;
+            opportunities.push({
+                pair,
+                type: 'guaranteed',
+                profitPct: profit * 100,
+                guaranteedProfit: profit,
+                action: `Buy Polymarket YES (${formatPrice(polyYes)}) + Kalshi NO (${formatPrice(kalshiNo)}) = ${formatPrice(cost1)} cost, $1 payout`,
+            });
+        }
+        else if (cost2 < 1) {
+            const profit = 1 - cost2;
+            opportunities.push({
+                pair,
+                type: 'guaranteed',
+                profitPct: profit * 100,
+                guaranteedProfit: profit,
+                action: `Buy Kalshi YES (${formatPrice(kalshiYes)}) + Polymarket NO (${formatPrice(polyNo)}) = ${formatPrice(cost2)} cost, $1 payout`,
+            });
+        }
+        else {
+            // No arbitrage, but still include for display
+            const spread = Math.abs(polyYes - kalshiYes);
+            const spreadPct = spread * 100;
+            let action;
+            if (polyYes < kalshiYes) {
+                action = `Buy Polymarket YES (${formatPrice(polyYes)}), Sell Kalshi YES (${formatPrice(kalshiYes)})`;
+            }
+            else {
+                action = `Buy Kalshi YES (${formatPrice(kalshiYes)}), Sell Polymarket YES (${formatPrice(polyYes)})`;
+            }
+            opportunities.push({
+                pair,
+                type: 'simple',
+                profitPct: spreadPct,
+                action,
+            });
+        }
+    }
+    // Sort by profit potential (guaranteed first, then by percentage)
+    opportunities.sort((a, b) => {
+        if (a.type === 'guaranteed' && b.type !== 'guaranteed')
+            return -1;
+        if (b.type === 'guaranteed' && a.type !== 'guaranteed')
+            return 1;
         return b.profitPct - a.profitPct;
     });
     return opportunities;

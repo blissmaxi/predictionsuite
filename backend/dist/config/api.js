@@ -38,7 +38,7 @@ export const ARBITRAGE = {
 // ============ Scanner Settings ============
 export const SCANNER = {
     /** Delay between API calls to avoid rate limiting (ms) */
-    RATE_LIMIT_DELAY_MS: 100,
+    RATE_LIMIT_DELAY_MS: 350,
     /** Number of days to scan for dynamic mappings */
     DYNAMIC_SCAN_DAYS: 3,
     /** Maximum opportunities to analyze for liquidity */

@@ -26,6 +26,14 @@ export declare function calculateArbitrage(pair: MarketPair): ArbitrageOpportuni
  */
 export declare function findArbitrageOpportunities(pairs: MarketPair[]): ArbitrageOpportunity[];
 /**
+ * Create opportunities for ALL market pairs, including those without significant spreads.
+ * This is used to display all matched markets in the frontend.
+ *
+ * @param pairs List of matched market pairs
+ * @returns Array of all opportunities (with or without arbitrage potential)
+ */
+export declare function createOpportunitiesFromAllPairs(pairs: MarketPair[]): ArbitrageOpportunity[];
+/**
  * Summarize arbitrage opportunities.
  */
 export declare function summarizeOpportunities(opportunities: ArbitrageOpportunity[]): {

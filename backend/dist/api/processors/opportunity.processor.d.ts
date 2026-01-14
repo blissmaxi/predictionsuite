@@ -11,6 +11,7 @@ export interface OpportunityDto {
     imageUrl: string | null;
     type: 'guaranteed' | 'spread';
     spreadPct: number;
+    action: string;
     potentialProfit: number;
     maxInvestment: number;
     timeToResolution: string | null;
@@ -27,11 +28,23 @@ export interface OpportunityDto {
             yes: number;
             no: number;
         };
+        orderBook: {
+            polyYesAsk: number;
+            kalshiNoAsk: number;
+            totalCost: number;
+            profitPct: number;
+        } | null;
+    };
+    urls: {
+        polymarket: string | null;
+        kalshi: string | null;
     };
     liquidity: {
         status: 'available' | 'spread_closed' | 'no_liquidity' | 'not_analyzed';
         limitedBy: string | null;
     };
+    roi: number | null;
+    apr: number | null;
     lastUpdated: string;
 }
 export interface OpportunitiesResponse {

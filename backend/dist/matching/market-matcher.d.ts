@@ -11,6 +11,7 @@ export interface MarketData {
     volume?: number;
     tokenIds?: string[];
     ticker?: string;
+    endDate?: string;
 }
 export interface MarketPair {
     polymarket: {
@@ -18,13 +19,17 @@ export interface MarketPair {
         yesPrice: number;
         noPrice: number;
         tokenIds?: string[];
+        slug?: string;
+        endDate?: string;
     };
     kalshi: {
         question: string;
         yesPrice: number;
         noPrice: number;
         ticker?: string;
+        seriesTicker?: string;
         imageUrl?: string;
+        endDate?: string;
     };
     eventName?: string;
     matchedEntity: string;

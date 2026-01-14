@@ -34,7 +34,7 @@ export declare const ARBITRAGE: {
 };
 export declare const SCANNER: {
     /** Delay between API calls to avoid rate limiting (ms) */
-    readonly RATE_LIMIT_DELAY_MS: 100;
+    readonly RATE_LIMIT_DELAY_MS: 350;
     /** Number of days to scan for dynamic mappings */
     readonly DYNAMIC_SCAN_DAYS: 3;
     /** Maximum opportunities to analyze for liquidity */

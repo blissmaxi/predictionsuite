@@ -174,8 +174,20 @@ function displayOpportunityWithLiquidity(opp: OpportunityWithLiquidity): void {
 
   const label = getOpportunityLabel(liquidity);
   console.log(`${label} - ${marketName}`);
-  console.log(`  Spread: ${opportunity.profitPct.toFixed(1)}%`);
-  console.log(`  "${entity}" wins: Poly ${formatPrice(polyYes)} + Kalshi NO ${formatPrice(kalshiNo)} = ${formatPrice(costPolyYesKalshiNo)}`);
+
+  // Calculate actual spread from order book prices (not last-traded)
+  const orderBookSpread = liquidity.bestPolyAsk !== undefined && liquidity.bestKalshiAsk !== undefined
+    ? (1 - (liquidity.bestPolyAsk + liquidity.bestKalshiAsk)) * 100
+    : opportunity.profitPct;
+  console.log(`  Spread: ${orderBookSpread.toFixed(1)}% (order book)`);
+
+  // Show order book prices if available
+  if (liquidity.bestPolyAsk !== undefined && liquidity.bestKalshiAsk !== undefined) {
+    const orderBookCost = liquidity.bestPolyAsk + liquidity.bestKalshiAsk;
+    console.log(`  "${entity}" wins: Poly ${formatPrice(liquidity.bestPolyAsk)} + Kalshi NO ${formatPrice(liquidity.bestKalshiAsk)} = ${formatPrice(orderBookCost)}`);
+  } else {
+    console.log(`  "${entity}" wins: Poly ${formatPrice(polyYes)} + Kalshi NO ${formatPrice(kalshiNo)} = ${formatPrice(costPolyYesKalshiNo)}`);
+  }
   console.log(`  "${entity}" loses: Kalshi ${formatPrice(kalshiYes)} + Poly NO ${formatPrice(polyNo)} = ${formatPrice(costKalshiYesPolyNo)}`);
   console.log(`  Max Contracts: ${liquidity.maxContracts.toFixed(2)}`);
   console.log(`  Max Investment: $${liquidity.maxInvestment.toFixed(2)}`);
