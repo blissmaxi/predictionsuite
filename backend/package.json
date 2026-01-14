@@ -1,0 +1,33 @@
+{
+  "name": "polyoracle",
+  "version": "0.1.0",
+  "description": "Prediction market arbitrage scanner for Polymarket and Kalshi",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "explore:polymarket": "npx tsx src/scripts/polymarket-explorer.ts",
+    "explore:kalshi": "npx tsx src/scripts/kalshi-explorer.ts",
+    "test:connectors": "npx tsx src/scripts/test-connectors.ts",
+    "test:matching": "npx tsx src/scripts/test-matching.ts",
+    "list:markets": "npx tsx src/scripts/list-all-markets.ts",
+    "list:event-names": "npx tsx src/scripts/list-event-names.ts",
+    "test:weather": "npx tsx src/scripts/test-weather-matching.ts",
+    "scan:weather": "npx tsx src/scripts/weather-arb-scanner.ts",
+    "test-orderbook": "npx tsx src/scripts/test-orderbook.ts",
+    "scan": "npx tsx src/scanner.ts",
+    "api": "npx tsx src/api/server.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "kalshi-typescript": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
