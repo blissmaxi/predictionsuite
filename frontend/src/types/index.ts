@@ -21,6 +21,7 @@ export interface Opportunity {
   prices: {
     polymarket: { yes: number; no: number };
     kalshi: { yes: number; no: number };
+    orderBook: { polyYesAsk: number; kalshiNoAsk: number; kalshiYesAsk: number; polyNoAsk: number } | null;
   };
   urls: {
     polymarket: string | null;
@@ -30,6 +31,8 @@ export interface Opportunity {
     status: 'available' | 'spread_closed' | 'no_liquidity' | 'not_analyzed';
     limitedBy: string | null;
   };
+  roi: number | null;
+  apr: number | null;
   lastUpdated: string;
 }
 
