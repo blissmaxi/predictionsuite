@@ -30,8 +30,16 @@ export interface OpportunityDto {
     kalshi: number;
   };
   prices: {
+    // Last traded prices (for reference)
     polymarket: { yes: number; no: number };
     kalshi: { yes: number; no: number };
+    // Order book prices (actual executable prices) - null if not analyzed
+    orderBook: {
+      polyYesAsk: number;  // Best ask to buy Polymarket YES
+      kalshiNoAsk: number; // Best ask to buy Kalshi NO
+      totalCost: number;   // Cost to execute 1 contract
+      profitPct: number;   // Actual profit % from order book
+    } | null;
   };
   urls: {
     polymarket: string | null;
@@ -129,12 +137,53 @@ function getKalshiUrl(
   return `https://kalshi.com/markets/${seriesLower}/${slug}/${eventTicker.toLowerCase()}`;
 }
 
+function getEarliestEndDate(polyEndDate?: string, kalshiEndDate?: string): string | null {
+  const dates: Date[] = [];
+
+  if (polyEndDate) {
+    const d = new Date(polyEndDate);
+    if (!isNaN(d.getTime())) dates.push(d);
+  }
+  if (kalshiEndDate) {
+    const d = new Date(kalshiEndDate);
+    if (!isNaN(d.getTime())) dates.push(d);
+  }
+
+  if (dates.length === 0) return null;
+
+  // Return the earliest date
+  const earliest = dates.reduce((a, b) => (a < b ? a : b));
+  return earliest.toISOString();
+}
+
 function transformOpportunity(
   opp: OpportunityWithLiquidity,
   scannedAt: Date
 ): OpportunityDto {
   const { opportunity, liquidity } = opp;
   const { pair, type, profitPct, action } = opportunity;
+
+  // Build order book prices if liquidity analysis is available
+  let orderBookPrices: OpportunityDto['prices']['orderBook'] = null;
+  let actualSpreadPct = profitPct; // Default to last-traded-based spread
+
+  if (liquidity?.bestPolyAsk !== undefined && liquidity?.bestKalshiAsk !== undefined) {
+    const totalCost = liquidity.orderBookCost ?? (liquidity.bestPolyAsk + liquidity.bestKalshiAsk);
+    const orderBookProfitPct = (1 - totalCost) * 100;
+
+    orderBookPrices = {
+      polyYesAsk: liquidity.bestPolyAsk,
+      kalshiNoAsk: liquidity.bestKalshiAsk,
+      totalCost,
+      profitPct: orderBookProfitPct,
+    };
+
+    // Use order book spread as the primary spread indicator
+    actualSpreadPct = orderBookProfitPct;
+  }
+
+  // Get earliest resolution date from either platform
+  const timeToResolution = getEarliestEndDate(pair.polymarket.endDate, pair.kalshi.endDate);
 
   return {
     id: generateOpportunityId(opp),
@@ -143,11 +192,11 @@ function transformOpportunity(
     category: pair.category || 'other',
     imageUrl: pair.kalshi.imageUrl || null,
     type: type === 'guaranteed' ? 'guaranteed' : 'spread',
-    spreadPct: profitPct,
+    spreadPct: actualSpreadPct,
     action: formatAction(action),
     potentialProfit: liquidity?.maxProfit ?? 0,
     maxInvestment: liquidity?.maxInvestment ?? 0,
-    timeToResolution: null, // Would need end date from event
+    timeToResolution,
     fees: {
       polymarket: 2.0, // Estimate
       kalshi: 1.0, // Estimate
@@ -161,6 +210,7 @@ function transformOpportunity(
         yes: pair.kalshi.yesPrice,
         no: pair.kalshi.noPrice,
       },
+      orderBook: orderBookPrices,
     },
     urls: {
       polymarket: getPolymarketUrl(pair.polymarket.slug),

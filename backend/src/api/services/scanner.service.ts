@@ -142,6 +142,7 @@ async function fetchPolymarketEvent(slug: string): Promise<EventFetchResult | nu
         yesPrice: parseFloat(prices[0]) || 0,
         volume: m.volumeNum || 0,
         tokenIds,
+        endDate: m.endDate || undefined,  // ISO date string
       };
     });
 
@@ -186,6 +187,7 @@ async function fetchKalshiEventBySeries(
         yesPrice: parseFloat(m.last_price_dollars || '0') || 0,
         volume: m.volume || 0,
         ticker: m.ticker,
+        endDate: (m as any).expected_expiration_time || undefined,  // ISO date string
       }));
 
     // Construct image URL from series ticker
@@ -220,6 +222,7 @@ async function fetchKalshiNbaGame(ticker: string): Promise<EventFetchResult | nu
           yesPrice: parseFloat(market.last_price_dollars || '0') || 0,
           volume: market.volume || 0,
           ticker: market.ticker,
+          endDate: market.expected_expiration_time || undefined,
         });
       }
     }
@@ -563,6 +566,7 @@ function matchNbaGameMarkets(
       noPrice: awayPolyNo,
       tokenIds: awayTokenIds,
       slug: polymarketSlug,
+      endDate: polyMoneyline?.endDate,
     },
     kalshi: {
       question: awayMarket.question,
@@ -571,6 +575,7 @@ function matchNbaGameMarkets(
       ticker: awayMarket.ticker,
       seriesTicker: 'KXNBAGAME',
       imageUrl,
+      endDate: awayMarket.endDate,
     },
     confidence: 1.0,
     spread: awaySpread,
@@ -592,6 +597,7 @@ function matchNbaGameMarkets(
       noPrice: homePolyNo,
       tokenIds: homeTokenIds,
       slug: polymarketSlug,
+      endDate: polyMoneyline?.endDate,
     },
     kalshi: {
       question: homeMarket.question,
@@ -600,6 +606,7 @@ function matchNbaGameMarkets(
       ticker: homeMarket.ticker,
       seriesTicker: 'KXNBAGAME',
       imageUrl,
+      endDate: homeMarket.endDate,
     },
     confidence: 1.0,
     spread: homeSpread,

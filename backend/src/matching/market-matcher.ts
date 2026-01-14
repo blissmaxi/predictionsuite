@@ -17,6 +17,8 @@ export interface MarketData {
   // Identifiers for order book fetching
   tokenIds?: string[];  // Polymarket: [yesTokenId, noTokenId]
   ticker?: string;      // Kalshi: market ticker
+  // Resolution date
+  endDate?: string;     // ISO date string when market resolves
 }
 
 export interface MarketPair {
@@ -26,6 +28,7 @@ export interface MarketPair {
     noPrice: number;
     tokenIds?: string[];  // [yesTokenId, noTokenId]
     slug?: string;        // Event slug for URL construction
+    endDate?: string;     // ISO date when market resolves
   };
   kalshi: {
     question: string;
@@ -34,6 +37,7 @@ export interface MarketPair {
     ticker?: string;
     seriesTicker?: string;  // Series ticker for URL construction
     imageUrl?: string;      // Kalshi event/market image
+    endDate?: string;       // ISO date when market resolves
   };
   eventName?: string;     // e.g., "NHL Stanley Cup", "Super Bowl"
   matchedEntity: string;  // e.g., "washington capitals", "kansas city chiefs"
@@ -106,12 +110,14 @@ function matchSportsMarkets(
         yesPrice: polyYes,
         noPrice: polyNo,
         tokenIds: polyMarket.tokenIds,
+        endDate: polyMarket.endDate,
       },
       kalshi: {
         question: kalshiMarket.question,
         yesPrice: kalshiYes,
         noPrice: kalshiNo,
         ticker: kalshiMarket.ticker,
+        endDate: kalshiMarket.endDate,
       },
       eventName,
       matchedEntity: team,
@@ -225,12 +231,14 @@ function matchWeatherMarkets(
             yesPrice: polyYes,
             noPrice: polyNo,
             tokenIds: poly.market.tokenIds,
+            endDate: poly.market.endDate,
           },
           kalshi: {
             question: kalshi.market.question,
             yesPrice: kalshiYes,
             noPrice: kalshiNo,
             ticker: kalshi.market.ticker,
+            endDate: kalshi.market.endDate,
           },
           eventName,
           matchedEntity: rangeStr,
@@ -334,12 +342,14 @@ function matchFinanceMarkets(
             yesPrice: polyYes,
             noPrice: polyNo,
             tokenIds: poly.market.tokenIds,
+            endDate: poly.market.endDate,
           },
           kalshi: {
             question: kalshi.market.question,
             yesPrice: kalshiYes,
             noPrice: kalshiNo,
             ticker: kalshi.market.ticker,
+            endDate: kalshi.market.endDate,
           },
           eventName,
           matchedEntity: actionStr,
