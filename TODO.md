@@ -319,19 +319,198 @@ npx tsx src/scripts/find-matched-markets.ts  # ✓ Full pipeline works
 
 ---
 
-## Stage 5: Scanner CLI (TODO)
+## Stage 5: REST API Server (COMPLETED)
 
-- [ ] Create `src/config.ts`:
-  - [ ] Load from `.env` (API keys, thresholds)
-  - [ ] Default configuration values
-- [ ] Build `src/scanner.ts`:
-  - [ ] Polling loop with configurable interval
-  - [ ] Fetch data from both connectors
-  - [ ] Run catalog matching + market-level matching
-  - [ ] Detect arbitrage opportunities
-  - [ ] Output results (console table / JSON)
-  - [ ] Add `--dry-run` flag for testing
-- [ ] Create `.env.example` with required variables
+**Goal:** Expose scanner functionality via HTTP API for frontend consumption.
+
+### API Implementation
+- [x] Create `src/api/server.ts` - Express server with CORS
+- [x] Create `src/api/services/scanner.service.ts` - Scanner orchestration
+- [x] Create `src/api/processors/opportunity.processor.ts` - Response transformation
+- [x] Endpoint: `GET /api/opportunities` - Returns all opportunities with liquidity data
+
+### Key Features
+- [x] **Scan caching** - 60-second TTL to avoid excessive API calls
+- [x] **Scan locking** - Prevents concurrent scans (subsequent requests wait for ongoing scan)
+- [x] **Sequential processing** - Events processed sequentially to avoid rate limiting (HTTP 429)
+- [x] **Limited liquidity analysis** - Only top 70 opportunities analyzed for order book depth
+
+### API Response Fields
+```typescript
+interface OpportunityDto {
+  id: string;
+  eventName: string;
+  marketName: string;
+  category: string;
+  imageUrl: string | null;
+  type: 'guaranteed' | 'spread';
+  spreadPct: number;           // Order book spread (not last-traded!)
+  action: string;
+  potentialProfit: number;
+  maxInvestment: number;
+  timeToResolution: string | null;  // ISO date of earliest resolution
+  roi: number | null;          // Return on investment (profit/investment * 100)
+  apr: number | null;          // Annualized return based on time to resolution
+  prices: {
+    polymarket: { yes: number; no: number };
+    kalshi: { yes: number; no: number };
+    orderBook: {
+      polyYesAsk: number;
+      kalshiNoAsk: number;
+      totalCost: number;
+      profitPct: number;
+    } | null;
+  };
+  urls: { polymarket: string | null; kalshi: string | null };
+  liquidity: { status: string; limitedBy: string | null };
+  lastUpdated: string;
+}
+```
+
+### Key Learnings
+
+**1. API Hanging Issue**
+- **Problem:** Analyzing liquidity for 108+ opportunities took too long (~324 API calls)
+- **Solution:** Limit liquidity analysis to top 70 opportunities by spread
+
+**2. Concurrent Scan Race Condition**
+- **Problem:** Multiple API requests triggered parallel scans, causing duplicate work
+- **Solution:** Promise-based scan lock - subsequent requests await the ongoing scan
+```typescript
+let scanInProgress: Promise<ScanResult> | null = null;
+
+export async function runScan(): Promise<ScanResult> {
+  if (scanInProgress) {
+    return scanInProgress;  // Wait for existing scan
+  }
+  scanInProgress = performScan();
+  try {
+    return await scanInProgress;
+  } finally {
+    scanInProgress = null;
+  }
+}
+```
+
+**3. Rate Limiting (HTTP 429)**
+- **Problem:** Parallel event fetching triggered Kalshi rate limits
+- **Solution:** Sequential processing with 50ms delays between requests
+
+**4. Order Book Spread vs Last-Traded Spread**
+- **Problem:** API was showing last-traded spread, not executable order book spread
+- **Solution:** Always use `orderBookProfitPct` when liquidity data available
+- **Critical:** Spread = `100 - (polyYesAsk + kalshiNoAsk)`, NOT `|polyYes - kalshiYes|`
+
+**5. Time to Resolution**
+- **Problem:** `timeToResolution` was always null
+- **Solution:** Parse `endDate` from Polymarket and `expected_expiration_time` from Kalshi, use earliest
+
+**6. ROI and APR Calculations**
+- ROI = `(profit / investment) * 100`
+- APR = `ROI * (365 / daysToResolution)` - annualized return for comparison
+- Short-term opportunities (2 days) can show 200%+ APR even with 1% ROI
+
+### Run API Server
+```bash
+cd backend && npm run api
+# Server runs on http://localhost:3001
+```
+
+---
+
+## Stage 6: Frontend Dashboard (COMPLETED)
+
+**Goal:** Build a Next.js frontend to display arbitrage opportunities.
+
+### Tech Stack
+- Next.js 14 (App Router)
+- TanStack React Query (data fetching)
+- shadcn/ui components
+- Tailwind CSS
+
+### Features Implemented
+- [x] Opportunities table with all fields
+- [x] Category badges (NBA, Championships, Weather, Finance, Politics)
+- [x] Liquidity status badges (Available, Spread Closed, No Liquidity)
+- [x] Action links to Polymarket and Kalshi with order book prices
+- [x] ROI and APR columns
+- [x] Time to resolution (e.g., "2d 5h")
+- [x] Sort by ROI descending (best opportunities first)
+- [x] Toggle to hide non-profitable opportunities (ROI <= 0)
+- [x] Refresh button with loading spinner
+- [x] Auto-refresh every 60 seconds
+- [x] Responsive design
+
+### shadcn Components Used
+- `table`, `badge`, `button`, `switch`, `label`
+
+### Key Files
+```
+frontend/
+├── src/
+│   ├── app/
+│   │   ├── page.tsx              # Main dashboard page
+│   │   └── layout.tsx            # Root layout with providers
+│   ├── components/
+│   │   ├── opportunities-table.tsx  # Main table component
+│   │   ├── providers.tsx         # React Query provider
+│   │   └── ui/                   # shadcn components
+│   ├── hooks/
+│   │   └── use-opportunities.ts  # Data fetching hook
+│   ├── lib/
+│   │   └── api.ts               # API client
+│   └── types/
+│       └── index.ts             # TypeScript types
+```
+
+### Run Frontend
+```bash
+cd frontend && npm run dev
+# Frontend runs on http://localhost:3000
+```
+
+---
+
+## Stage 7: NBA Game Matching (COMPLETED)
+
+**Goal:** Match individual NBA games between Polymarket and Kalshi for daily arbitrage.
+
+### Implementation
+- [x] Create `src/matching/nba-game-matcher.ts` - NBA game discovery
+- [x] Fetch NBA schedule from `cdn.nba.com` API
+- [x] Generate Polymarket slugs: `nba-{away}-{home}-{date}`
+- [x] Generate Kalshi tickers: `KXNBAGAME-{YY}{MON}{DD}{AWAY}{HOME}`
+- [x] Match team moneyline markets between platforms
+
+### Key Learnings
+
+**1. Team Order in Polymarket Questions**
+- **Problem:** Polymarket question format varies: "Thunder vs. Spurs" or "Spurs vs. Thunder"
+- **Impact:** `prices[0]` (yesPrice) corresponds to FIRST team listed, not away team
+- **Solution:** Parse question to detect team positions, assign prices accordingly
+```typescript
+const awayPos = question.indexOf(awayTeam);
+const homePos = question.indexOf(homeTeam);
+const awayIsFirst = awayPos < homePos;
+
+if (awayIsFirst) {
+  awayPolyYes = polyMoneyline.yesPrice;
+  homePolyYes = 1 - polyMoneyline.yesPrice;
+} else {
+  homePolyYes = polyMoneyline.yesPrice;
+  awayPolyYes = 1 - polyMoneyline.yesPrice;
+}
+```
+
+**2. Token ID Assignment**
+- `tokenIds[0]` = YES token for FIRST team in question
+- `tokenIds[1]` = NO token for first team (= YES for second team)
+- Must track correctly for order book fetching
+
+**3. Excluding Non-Moneyline Markets**
+- Polymarket has spreads, totals, props, quarter/half markets
+- Filter by excluding keywords: "spread", "o/u", "over", "under", "total", "points", "quarter", "half"
+- Use word boundaries to avoid false positives (e.g., "Thunder" matching "under")
 
 ---
 
@@ -344,47 +523,72 @@ npx tsx src/scripts/find-matched-markets.ts  # ✓ Full pipeline works
 - [ ] Historical opportunity logging
 - [ ] Weather mispricing detector (consistency check for shifted boundaries)
 - [ ] More sports leagues (MLS, NCAA, etc.)
+- [ ] Mobile-responsive improvements
+- [ ] Dark mode toggle
 
 ---
 
 ## Project Structure
 ```
-src/
-├── scanner.ts                    # Main entry (TODO)
-├── config/
-│   └── api.ts                    # API URLs, timeouts, thresholds
-├── types/
-│   ├── index.ts                  # Type re-exports
-│   ├── polymarket.ts
-│   ├── kalshi.ts
-│   └── unified.ts
-├── errors/
-│   └── index.ts                  # Typed error classes
-├── connectors/
-│   ├── polymarket-connector.ts
-│   └── kalshi-connector.ts
-├── matching/
-│   ├── catalog-matcher.ts        # Config-driven event matching
-│   ├── market-matcher.ts         # Market-level matching within events
-│   └── normalizers/
-│       └── sports.ts             # Team name normalization
-├── orderbook/
-│   └── fetcher.ts                # Order book fetching
-├── arbitrage/
-│   ├── calculator.ts             # Arbitrage opportunity detection
-│   └── liquidity-analyzer.ts     # Order book capacity analysis
-└── scripts/
-    ├── polymarket-explorer.ts
-    ├── kalshi-explorer.ts
-    ├── test-connectors.ts
-    ├── list-all-markets.ts
-    ├── find-matched-markets.ts   # Main scanner script
-    ├── test-orderbook.ts         # Order book pipeline testing
-    └── debug-barcelona.ts        # Last trade vs order book comparison
+backend/
+├── src/
+│   ├── api/
+│   │   ├── server.ts                # Express API server
+│   │   ├── services/
+│   │   │   └── scanner.service.ts   # Scanner orchestration
+│   │   └── processors/
+│   │       └── opportunity.processor.ts  # Response transformation
+│   ├── config/
+│   │   └── api.ts                   # API URLs, timeouts, thresholds
+│   ├── types/
+│   │   ├── index.ts                 # Type re-exports
+│   │   ├── polymarket.ts
+│   │   ├── kalshi.ts
+│   │   └── unified.ts
+│   ├── errors/
+│   │   └── index.ts                 # Typed error classes
+│   ├── connectors/
+│   │   ├── polymarket-connector.ts
+│   │   └── kalshi-connector.ts
+│   ├── matching/
+│   │   ├── catalog-matcher.ts       # Config-driven event matching
+│   │   ├── market-matcher.ts        # Market-level matching within events
+│   │   ├── nba-game-matcher.ts      # NBA game discovery and matching
+│   │   └── normalizers/
+│   │       └── sports.ts            # Team name normalization
+│   ├── orderbook/
+│   │   └── fetcher.ts               # Order book fetching
+│   ├── arbitrage/
+│   │   ├── calculator.ts            # Arbitrage opportunity detection
+│   │   └── liquidity-analyzer.ts    # Order book capacity analysis
+│   └── scripts/
+│       ├── polymarket-explorer.ts
+│       ├── kalshi-explorer.ts
+│       ├── test-connectors.ts
+│       ├── list-all-markets.ts
+│       ├── find-matched-markets.ts  # Main scanner CLI
+│       ├── test-orderbook.ts
+│       └── debug-barcelona.ts
+
+frontend/
+├── src/
+│   ├── app/
+│   │   ├── page.tsx                 # Dashboard page
+│   │   └── layout.tsx               # Root layout
+│   ├── components/
+│   │   ├── opportunities-table.tsx  # Main table component
+│   │   ├── providers.tsx            # React Query provider
+│   │   └── ui/                      # shadcn components
+│   ├── hooks/
+│   │   └── use-opportunities.ts     # Data fetching hook
+│   ├── lib/
+│   │   └── api.ts                   # API client
+│   └── types/
+│       └── index.ts                 # TypeScript types
 
 config/
-├── market-mappings.json          # Event catalog (static + dynamic patterns)
-└── teams.json                    # Team name aliases (NFL, NBA, NHL, MLB, Soccer)
+├── market-mappings.json             # Event catalog (static + dynamic patterns)
+└── teams.json                       # Team name aliases
 ```
 
 ---
@@ -392,14 +596,14 @@ config/
 ## Quick Start
 
 ```bash
-# Run the arbitrage scanner
-npx tsx src/scripts/find-matched-markets.ts
+# Start backend API (terminal 1)
+cd backend && npm run api
 
-# Explore Polymarket API
-npm run explore:polymarket
+# Start frontend (terminal 2)
+cd frontend && npm run dev
 
-# Explore Kalshi API
-npm run explore:kalshi
+# Or run CLI scanner directly
+cd backend && npx tsx src/scripts/find-matched-markets.ts
 ```
 
 ---
@@ -414,5 +618,9 @@ npm run explore:kalshi
 - [x] Order book fetching works for both platforms
 - [x] Liquidity analyzer correctly identifies spread_closed vs no_liquidity
 - [x] Last trade vs order book price discrepancy documented
-- [ ] Scanner polling loop with configurable interval
+- [x] API server with scan locking and caching
+- [x] Frontend dashboard with opportunities table
+- [x] ROI and APR calculations
+- [x] NBA game matching with correct team/price assignment
 - [ ] Manually verify detected opportunities on both platforms
+- [ ] Execute a test trade to validate end-to-end flow

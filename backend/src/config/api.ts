@@ -54,7 +54,7 @@ export const ARBITRAGE = {
 
 export const SCANNER = {
   /** Delay between API calls to avoid rate limiting (ms) */
-  RATE_LIMIT_DELAY_MS: 150,
+  RATE_LIMIT_DELAY_MS: 50,
 
   /** Number of days to scan for dynamic mappings */
   DYNAMIC_SCAN_DAYS: 3,
