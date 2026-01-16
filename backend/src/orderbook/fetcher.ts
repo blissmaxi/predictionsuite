@@ -123,12 +123,14 @@ export async function fetchKalshiOrderBook(ticker: string): Promise<UnifiedOrder
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new ApiError(
-        `Failed to fetch order book`,
-        'kalshi',
-        response.status,
-        { ticker }
-      );
+      // For rate limits (429), throw an error that can be retried
+      if (response.status === 429) {
+        const error = new Error(`Rate limited fetching Kalshi order book for ${ticker}`);
+        (error as any).status = 429;
+        throw error;
+      }
+      // For other errors, return empty book
+      return emptyBook;
     }
 
     const data = (await response.json()) as KalshiOrderBook;
@@ -144,8 +146,12 @@ export async function fetchKalshiOrderBook(ticker: string): Promise<UnifiedOrder
       noAsks: parseKalshiLevels(yesLevels, 'complement', 'ascending'),
       fetchedAt: new Date(),
     };
-  } catch {
-    // Return empty book - caller handles no-liquidity case
+  } catch (error: any) {
+    // Re-throw rate limit errors for retry logic
+    if (error?.status === 429) {
+      throw error;
+    }
+    // Return empty book for other errors - caller handles no-liquidity case
     return emptyBook;
   }
 }

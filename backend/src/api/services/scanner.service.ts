@@ -98,6 +98,32 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Retry wrapper for Kalshi requests (handles connection-based rate limiting)
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 100
+): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const status = error?.response?.status || error?.status;
+      if (status === 429 && attempt < maxRetries - 1) {
+        // Exponential backoff: 100ms, 200ms, 400ms
+        const waitMs = baseDelayMs * Math.pow(2, attempt);
+        console.warn(`[Retry] Rate limited, waiting ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await delay(waitMs);
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
 // ============ Platform Fetchers ============
 
 interface EventFetchResult {
@@ -164,36 +190,38 @@ async function fetchKalshiEventBySeries(
   series: string
 ): Promise<EventFetchResult | null> {
   try {
-    const response = await kalshiEventsApi.getEvents(
-      100,
-      undefined,
-      true,
-      false,
-      'open',
-      series
-    );
+    return await withRetry(async () => {
+      const response = await kalshiEventsApi.getEvents(
+        100,
+        undefined,
+        true,
+        false,
+        'open',
+        series
+      );
 
-    const events = response.data.events || [];
-    const event = events.find(
-      (e) => e.event_ticker?.toUpperCase() === ticker.toUpperCase()
-    );
+      const events = response.data.events || [];
+      const event = events.find(
+        (e) => e.event_ticker?.toUpperCase() === ticker.toUpperCase()
+      );
 
-    if (!event) return null;
+      if (!event) return null;
 
-    const markets: MarketData[] = (event.markets || [])
-      .filter((m: KalshiMarket) => m.status === 'active')
-      .map((m: KalshiMarket) => ({
-        question: m.yes_sub_title || m.title || 'Unknown',
-        yesPrice: parseFloat(m.last_price_dollars || '0') || 0,
-        volume: m.volume || 0,
-        ticker: m.ticker,
-        endDate: (m as any).expected_expiration_time || undefined,  // ISO date string
-      }));
+      const markets: MarketData[] = (event.markets || [])
+        .filter((m: KalshiMarket) => m.status === 'active')
+        .map((m: KalshiMarket) => ({
+          question: m.yes_sub_title || m.title || 'Unknown',
+          yesPrice: parseFloat(m.last_price_dollars || '0') || 0,
+          volume: m.volume || 0,
+          ticker: m.ticker,
+          endDate: (m as any).expected_expiration_time || undefined,  // ISO date string
+        }));
 
-    // Construct image URL from series ticker
-    const imageUrl = getKalshiImageUrl(series);
+      // Construct image URL from series ticker
+      const imageUrl = getKalshiImageUrl(series);
 
-    return { title: event.title || ticker, markets, imageUrl };
+      return { title: event.title || ticker, markets, imageUrl };
+    });
   } catch (error: any) {
     const status = error?.response?.status || error?.status || 'unknown';
     console.warn(`[Kalshi] Error fetching ${ticker} (series: ${series}): HTTP ${status}`);
@@ -201,57 +229,76 @@ async function fetchKalshiEventBySeries(
   }
 }
 
-async function fetchKalshiNbaGame(ticker: string): Promise<EventFetchResult | null> {
-  try {
-    const response = await fetch(
-      `${KALSHI.API_URL}/markets?series_ticker=KXNBAGAME&limit=100`
-    );
+// Cache for Kalshi NBA markets (fetched once per scan)
+let kalshiNbaMarketsCache: any[] | null = null;
 
-    if (!response.ok) {
-      console.warn(`[Kalshi] Failed to fetch NBA game ${ticker}: HTTP ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-    const markets: MarketData[] = [];
-
-    for (const market of data.markets || []) {
-      if (market.ticker?.startsWith(ticker)) {
-        markets.push({
-          question: market.yes_sub_title || market.title || 'Unknown',
-          yesPrice: parseFloat(market.last_price_dollars || '0') || 0,
-          volume: market.volume || 0,
-          ticker: market.ticker,
-          endDate: market.expected_expiration_time || undefined,
-        });
-      }
-    }
-
-    if (markets.length === 0) return null;
-
-    return {
-      title: `NBA Game: ${ticker}`,
-      markets,
-      imageUrl: getKalshiImageUrl('KXNBAGAME'),
-    };
-  } catch (error: any) {
-    const status = error?.response?.status || error?.status || 'unknown';
-    console.warn(`[Kalshi] Error fetching NBA game ${ticker}: HTTP ${status}`);
-    return null;
+async function fetchAllKalshiNbaMarkets(): Promise<any[]> {
+  if (kalshiNbaMarketsCache !== null) {
+    return kalshiNbaMarketsCache;
   }
+
+  try {
+    const markets = await withRetry(async () => {
+      const response = await fetch(
+        `${KALSHI.API_URL}/markets?series_ticker=KXNBAGAME&limit=100`
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          const error = new Error(`HTTP 429`);
+          (error as any).status = 429;
+          throw error;
+        }
+        console.warn(`[Kalshi] Failed to fetch NBA markets: HTTP ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      return data.markets || [];
+    });
+
+    kalshiNbaMarketsCache = markets;
+    return markets;
+  } catch (error: any) {
+    console.warn(`[Kalshi] Error fetching NBA markets: ${error?.message || 'unknown'}`);
+    return [];
+  }
+}
+
+function filterKalshiNbaGame(allMarkets: any[], ticker: string): EventFetchResult | null {
+  const markets: MarketData[] = [];
+
+  for (const market of allMarkets) {
+    if (market.ticker?.startsWith(ticker)) {
+      markets.push({
+        question: market.yes_sub_title || market.title || 'Unknown',
+        yesPrice: parseFloat(market.last_price_dollars || '0') || 0,
+        volume: market.volume || 0,
+        ticker: market.ticker,
+        endDate: market.expected_expiration_time || undefined,
+      });
+    }
+  }
+
+  if (markets.length === 0) return null;
+
+  return {
+    title: `NBA Game: ${ticker}`,
+    markets,
+    imageUrl: getKalshiImageUrl('KXNBAGAME'),
+  };
 }
 
 // ============ Event Processing ============
 
-async function processMatch(
-  match: MatchResult,
-  fetchKalshi: (ticker: string, series?: string) => Promise<EventFetchResult | null>
-): Promise<MatchedEvent> {
-  const [polyData, kalshiData] = await Promise.all([
-    fetchPolymarketEvent(match.polymarketSlug),
-    fetchKalshi(match.kalshiTicker, match.kalshiSeries),
-  ]);
+// OPTIMIZED: Polymarket can handle many parallel requests, Kalshi is connection-limited
+// Strategy: Batch Polymarket requests in parallel, process Kalshi sequentially
 
+function buildMatchedEvent(
+  match: MatchResult,
+  polyData: EventFetchResult | null,
+  kalshiData: EventFetchResult | null
+): MatchedEvent {
   let marketPairs: MarketPair[] | undefined;
   if (polyData && kalshiData) {
     const pairs = matchMarketsWithinEvent(
@@ -301,35 +348,54 @@ async function processMatch(
 
 async function processYearlyEvents(): Promise<MatchedEvent[]> {
   const matches = generateYearlyMatches(CURRENT_YEAR);
-  const results: MatchedEvent[] = [];
+  if (matches.length === 0) return [];
 
+  // OPTIMIZED: Fetch all Polymarket events in parallel (very permissive rate limits)
+  const polyPromises = matches.map((m) => fetchPolymarketEvent(m.polymarketSlug));
+  const polyResults = await Promise.all(polyPromises);
+
+  // Fetch Kalshi events sequentially (connection-limited, but no delay needed)
+  const kalshiResults: (EventFetchResult | null)[] = [];
   for (const match of matches) {
-    const result = await processMatch(match, (ticker, series) =>
-      fetchKalshiEventBySeries(ticker, series || ticker.replace(/-.*$/, ''))
+    const result = await fetchKalshiEventBySeries(
+      match.kalshiTicker,
+      match.kalshiSeries || match.kalshiTicker.replace(/-.*$/, '')
     );
-    results.push(result);
-    await delay(SCANNER.RATE_LIMIT_DELAY_MS);
+    kalshiResults.push(result);
   }
 
-  return results;
+  // Combine results
+  return matches.map((match, i) =>
+    buildMatchedEvent(match, polyResults[i], kalshiResults[i])
+  );
 }
 
 async function processDynamicEvents(): Promise<MatchedEvent[]> {
-  const results: MatchedEvent[] = [];
-
+  // Collect all matches first
+  const allMatches: MatchResult[] = [];
   for (let dayOffset = 0; dayOffset < SCANNER.DYNAMIC_SCAN_DAYS; dayOffset++) {
     const date = new Date();
     date.setDate(date.getDate() + dayOffset);
-
-    const matches = generateDynamicMatches(date);
-    for (const match of matches) {
-      const result = await processMatch(match, fetchKalshiEvent);
-      results.push(result);
-      await delay(SCANNER.RATE_LIMIT_DELAY_MS / 2);
-    }
+    allMatches.push(...generateDynamicMatches(date));
   }
 
-  return results;
+  if (allMatches.length === 0) return [];
+
+  // OPTIMIZED: Fetch all Polymarket events in parallel
+  const polyPromises = allMatches.map((m) => fetchPolymarketEvent(m.polymarketSlug));
+  const polyResults = await Promise.all(polyPromises);
+
+  // Fetch Kalshi events sequentially (no delay needed)
+  const kalshiResults: (EventFetchResult | null)[] = [];
+  for (const match of allMatches) {
+    const result = await fetchKalshiEvent(match.kalshiTicker);
+    kalshiResults.push(result);
+  }
+
+  // Combine results
+  return allMatches.map((match, i) =>
+    buildMatchedEvent(match, polyResults[i], kalshiResults[i])
+  );
 }
 
 async function processNbaGames(): Promise<MatchedEvent[]> {
@@ -338,55 +404,61 @@ async function processNbaGames(): Promise<MatchedEvent[]> {
   endDate.setDate(today.getDate() + SCANNER.DYNAMIC_SCAN_DAYS);
 
   const games = await fetchNbaGameMatches(today, endDate);
-  const results: MatchedEvent[] = [];
+  if (games.length === 0) return [];
 
-  for (const game of games) {
-    const result = await processNbaGame(game);
-    results.push(result);
-    await delay(SCANNER.RATE_LIMIT_DELAY_MS);
+  // OPTIMIZED: Fetch Polymarket events in parallel + Kalshi NBA markets once
+  const [polyResults, allKalshiNbaMarkets] = await Promise.all([
+    Promise.all(games.map((g) => fetchPolymarketEvent(g.polymarketSlug))),
+    fetchAllKalshiNbaMarkets(),
+  ]);
+
+  // Filter Kalshi markets for each game (no API calls, just filtering)
+  const kalshiResults = games.map((game) =>
+    filterKalshiNbaGame(allKalshiNbaMarkets, game.kalshiTicker)
+  );
+
+  // Process and combine results
+  const results: MatchedEvent[] = [];
+  for (let i = 0; i < games.length; i++) {
+    const game = games[i];
+    const polyData = polyResults[i];
+    const kalshiData = kalshiResults[i];
+
+    let marketPairs: MarketPair[] | undefined;
+    if (polyData && kalshiData) {
+      marketPairs = matchNbaGameMarkets(
+        polyData.markets,
+        kalshiData.markets,
+        game,
+        kalshiData.imageUrl,
+        game.polymarketSlug
+      );
+    }
+
+    results.push({
+      name: `${game.awayTeam} @ ${game.homeTeam}`,
+      category: 'nba_game',
+      type: 'dynamic',
+      polymarketSlug: game.polymarketSlug,
+      kalshiTicker: game.kalshiTicker,
+      kalshiSeries: game.kalshiSeries,
+      kalshiImageUrl: kalshiData?.imageUrl,
+      date: game.date,
+      polymarket: {
+        found: !!polyData,
+        title: polyData?.title,
+        markets: polyData?.markets,
+      },
+      kalshi: {
+        found: !!kalshiData,
+        title: kalshiData?.title,
+        markets: kalshiData?.markets,
+      },
+      marketPairs,
+    });
   }
 
   return results;
-}
-
-async function processNbaGame(game: NbaGameMatch): Promise<MatchedEvent> {
-  const [polyData, kalshiData] = await Promise.all([
-    fetchPolymarketEvent(game.polymarketSlug),
-    fetchKalshiNbaGame(game.kalshiTicker),
-  ]);
-
-  let marketPairs: MarketPair[] | undefined;
-  if (polyData && kalshiData) {
-    marketPairs = matchNbaGameMarkets(
-      polyData.markets,
-      kalshiData.markets,
-      game,
-      kalshiData.imageUrl,
-      game.polymarketSlug
-    );
-  }
-
-  return {
-    name: `${game.awayTeam} @ ${game.homeTeam}`,
-    category: 'nba_game',
-    type: 'dynamic',
-    polymarketSlug: game.polymarketSlug,
-    kalshiTicker: game.kalshiTicker,
-    kalshiSeries: game.kalshiSeries,
-    kalshiImageUrl: kalshiData?.imageUrl,
-    date: game.date,
-    polymarket: {
-      found: !!polyData,
-      title: polyData?.title,
-      markets: polyData?.markets,
-    },
-    kalshi: {
-      found: !!kalshiData,
-      title: kalshiData?.title,
-      markets: kalshiData?.markets,
-    },
-    marketPairs,
-  };
 }
 
 function matchNbaGameMarkets(
@@ -617,28 +689,79 @@ function matchNbaGameMarkets(
 
 // ============ Liquidity Analysis ============
 
-async function analyzeOpportunityLiquidity(
-  opp: ArbitrageOpportunity
-): Promise<LiquidityAnalysis | null> {
-  const polyTokenIds = opp.pair.polymarket.tokenIds;
-  const kalshiTicker = opp.pair.kalshi.ticker;
+// OPTIMIZED: Batch Polymarket order books (parallel), batch Kalshi with limited concurrency
+const KALSHI_CONCURRENCY = 4; // Kalshi limits to ~4 concurrent connections
 
-  if (!polyTokenIds || polyTokenIds.length < 2 || !kalshiTicker) {
-    return null;
+async function analyzeAllOpportunitiesLiquidity(
+  opportunities: ArbitrageOpportunity[]
+): Promise<Map<ArbitrageOpportunity, LiquidityAnalysis | null>> {
+  const results = new Map<ArbitrageOpportunity, LiquidityAnalysis | null>();
+
+  // Filter opportunities that have required data
+  const validOpps = opportunities.filter((opp) => {
+    const polyTokenIds = opp.pair.polymarket.tokenIds;
+    const kalshiTicker = opp.pair.kalshi.ticker;
+    return polyTokenIds && polyTokenIds.length >= 2 && kalshiTicker;
+  });
+
+  // Initialize results for invalid opportunities
+  for (const opp of opportunities) {
+    if (!validOpps.includes(opp)) {
+      results.set(opp, null);
+    }
   }
 
-  try {
-    const [polyBook, kalshiBook] = await Promise.all([
-      fetchPolymarketOrderBook(polyTokenIds[0], polyTokenIds[1]),
-      fetchKalshiOrderBook(kalshiTicker),
-    ]);
+  if (validOpps.length === 0) return results;
 
-    return analyzeLiquidity(opp, polyBook, kalshiBook);
-  } catch (error: any) {
-    const msg = error?.message || 'unknown error';
-    console.warn(`[Liquidity] Error analyzing ${opp.pair.matchedEntity}: ${msg}`);
-    return null;
+  // OPTIMIZED: Fetch all Polymarket order books in parallel (very permissive)
+  const polyPromises = validOpps.map(async (opp) => {
+    const tokenIds = opp.pair.polymarket.tokenIds!;
+    try {
+      return await fetchPolymarketOrderBook(tokenIds[0], tokenIds[1]);
+    } catch (error: any) {
+      console.warn(`[Liquidity] Polymarket error for ${opp.pair.matchedEntity}: ${error?.message || 'unknown'}`);
+      return null;
+    }
+  });
+  const polyBooks = await Promise.all(polyPromises);
+
+  // OPTIMIZED: Fetch Kalshi order books with limited concurrency (max 4 parallel)
+  const kalshiBooks: (Awaited<ReturnType<typeof fetchKalshiOrderBook>> | null)[] = [];
+  for (let i = 0; i < validOpps.length; i += KALSHI_CONCURRENCY) {
+    const batch = validOpps.slice(i, i + KALSHI_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (opp) => {
+        try {
+          return await withRetry(() => fetchKalshiOrderBook(opp.pair.kalshi.ticker!));
+        } catch (error: any) {
+          console.warn(`[Liquidity] Kalshi error for ${opp.pair.matchedEntity}: ${error?.message || 'unknown'}`);
+          return null;
+        }
+      })
+    );
+    kalshiBooks.push(...batchResults);
   }
+
+  // Analyze liquidity for each opportunity
+  for (let i = 0; i < validOpps.length; i++) {
+    const opp = validOpps[i];
+    const polyBook = polyBooks[i];
+    const kalshiBook = kalshiBooks[i];
+
+    if (polyBook && kalshiBook) {
+      try {
+        const analysis = analyzeLiquidity(opp, polyBook, kalshiBook);
+        results.set(opp, analysis);
+      } catch (error: any) {
+        console.warn(`[Liquidity] Analysis error for ${opp.pair.matchedEntity}: ${error?.message || 'unknown'}`);
+        results.set(opp, null);
+      }
+    } else {
+      results.set(opp, null);
+    }
+  }
+
+  return results;
 }
 
 // ============ Main Scan Function ============
@@ -669,13 +792,18 @@ export async function runScan(forceRefresh = false): Promise<ScanResult> {
 
 async function performScan(): Promise<ScanResult> {
   const now = Date.now();
-  console.log('[ScannerService] Running full scan...');
+  console.log(`[ScannerService: ${new Date().toISOString()}] Running optimized scan...`);
+
+  // Clear per-scan caches
+  kalshiNbaMarketsCache = null;
 
   // Load mappings
   loadMappings();
 
-  // Process all events sequentially to avoid rate limiting
-  // (running in parallel causes bursts of requests that trigger 429 errors)
+  // OPTIMIZED FETCHING STRATEGY:
+  // - Polymarket: Fetch all events in parallel (very permissive rate limits)
+  // - Kalshi: Fetch events sequentially (connection-limited to ~4-5 concurrent)
+  // - No artificial delays - Kalshi limits are connection-based, not throughput-based
   const yearlyEvents = await processYearlyEvents();
   const dynamicEvents = await processDynamicEvents();
   const nbaGames = await processNbaGames();
@@ -687,7 +815,7 @@ async function performScan(): Promise<ScanResult> {
   const dynamicBoth = dynamicEvents.filter((e) => e.polymarket.found && e.kalshi.found);
   const nbaBoth = nbaGames.filter((e) => e.polymarket.found && e.kalshi.found);
 
-  console.log(`[ScannerService] Event breakdown:`);
+  console.log(`[ScannerService: ${new Date().toISOString()}] Event breakdown:`);
   console.log(`  - Yearly: ${yearlyEvents.length} total, ${yearlyBoth.length} on both platforms`);
   console.log(`  - Dynamic: ${dynamicEvents.length} total, ${dynamicBoth.length} on both platforms`);
   console.log(`  - NBA Games: ${nbaGames.length} total, ${nbaBoth.length} on both platforms`);
@@ -696,12 +824,12 @@ async function performScan(): Promise<ScanResult> {
   const bothPlatforms = allEvents.filter((e) => e.polymarket.found && e.kalshi.found);
   const allMarketPairs = bothPlatforms.flatMap((e) => e.marketPairs || []);
 
-  console.log(`[ScannerService] Market pairs: ${allMarketPairs.length} from ${bothPlatforms.length} events`);
+  console.log(`[ScannerService: ${new Date().toISOString()}] Market pairs: ${allMarketPairs.length} from ${bothPlatforms.length} events`);
 
   // Create opportunities for ALL matched market pairs (including those without arbitrage)
   const rawOpportunities = createOpportunitiesFromAllPairs(allMarketPairs);
 
-  console.log(`[ScannerService] Raw opportunities: ${rawOpportunities.length}`);
+  console.log(`[ScannerService: ${new Date().toISOString()}] Raw opportunities: ${rawOpportunities.length}`);
 
   // Analyze liquidity for top opportunities only (by spread %)
   // Analyzing all would take too long (3 API calls per opportunity)
@@ -709,15 +837,17 @@ async function performScan(): Promise<ScanResult> {
   const opportunitiesToAnalyze = rawOpportunities.slice(0, MAX_LIQUIDITY_ANALYSIS);
   const opportunitiesWithoutAnalysis = rawOpportunities.slice(MAX_LIQUIDITY_ANALYSIS);
 
-  console.log(`[ScannerService] Analyzing liquidity for top ${opportunitiesToAnalyze.length} opportunities...`);
+  console.log(`[ScannerService: ${new Date().toISOString()}] Analyzing liquidity for top ${opportunitiesToAnalyze.length} opportunities...`);
+
+  // OPTIMIZED: Batch liquidity analysis (parallel Polymarket, sequential Kalshi)
+  const liquidityResults = await analyzeAllOpportunitiesLiquidity(opportunitiesToAnalyze);
 
   const opportunities: OpportunityWithLiquidity[] = [];
 
-  for (let i = 0; i < opportunitiesToAnalyze.length; i++) {
-    const opp = opportunitiesToAnalyze[i];
-    const liquidity = await analyzeOpportunityLiquidity(opp);
+  // Add analyzed opportunities
+  for (const opp of opportunitiesToAnalyze) {
+    const liquidity = liquidityResults.get(opp) ?? null;
     opportunities.push({ opportunity: opp, liquidity });
-    await delay(SCANNER.RATE_LIMIT_DELAY_MS);
   }
 
   // Add remaining opportunities without liquidity analysis
@@ -735,7 +865,7 @@ async function performScan(): Promise<ScanResult> {
   cachedResult = result;
   cacheTimestamp = now;
 
-  console.log(`[ScannerService] Scan complete: ${allEvents.length} events, ${opportunities.length} opportunities`);
+  console.log(`[ScannerService: ${new Date().toISOString()}] Scan complete: ${allEvents.length} events, ${opportunities.length} opportunities`);
 
   return result;
 }
