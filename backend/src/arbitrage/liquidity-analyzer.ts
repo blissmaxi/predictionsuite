@@ -8,7 +8,6 @@
  * significantly from the actual executable spread in the order book.
  */
 
-import { DISPLAY } from '../config/api.js';
 import type { UnifiedOrderBook, OrderBookLevel } from '../orderbook/fetcher.js';
 import type { ArbitrageOpportunity } from './calculator.js';
 
@@ -310,99 +309,6 @@ function createSpreadClosedResult(
     bestKalshiAsk,
     orderBookCost,
   };
-}
-
-// ============ Formatting ============
-
-/**
- * Format liquidity analysis for console display.
- */
-export function formatLiquidityAnalysis(analysis: LiquidityAnalysis): string {
-  if (analysis.maxContracts === 0) {
-    return formatNoLiquidityMessage(analysis);
-  }
-  return formatProfitableAnalysis(analysis);
-}
-
-function formatNoLiquidityMessage(analysis: LiquidityAnalysis): string {
-  const lines: string[] = [];
-
-  switch (analysis.limitedBy) {
-    case 'spread_closed':
-      lines.push('  Spread closed at order book prices');
-      if (analysis.bestPolyAsk !== undefined && analysis.bestKalshiAsk !== undefined) {
-        lines.push(
-          `    Poly YES ask: ${formatCents(analysis.bestPolyAsk)} + ` +
-          `Kalshi NO ask: ${formatCents(analysis.bestKalshiAsk)} = ` +
-          `${formatCents(analysis.orderBookCost!)}`
-        );
-        const lossPct = (analysis.orderBookCost! - 1) * 100;
-        lines.push(`    Execution would lose ${lossPct.toFixed(1)}%`);
-      }
-      lines.push('    (Last trade prices showed profit, but order book has moved)');
-      break;
-
-    case 'no_liquidity':
-      lines.push('  No liquidity (empty order book)');
-      lines.push(`    Polymarket depth: ${analysis.polymarketDepth.toFixed(0)} contracts`);
-      lines.push(`    Kalshi depth: ${analysis.kalshiDepth.toFixed(0)} contracts`);
-      break;
-
-    default:
-      lines.push('  No executable arbitrage');
-  }
-
-  return lines.join('\n');
-}
-
-function formatProfitableAnalysis(analysis: LiquidityAnalysis): string {
-  const lines: string[] = [
-    `  Max Contracts: ${analysis.maxContracts.toLocaleString()}`,
-    `  Max Investment: $${analysis.maxInvestment.toFixed(2)}`,
-    `  Max Profit: $${analysis.maxProfit.toFixed(2)} (${analysis.avgProfitPct.toFixed(2)}%)`,
-    `  Limited by: ${formatLimitingFactor(analysis.limitedBy)}`,
-  ];
-
-  // Add price level breakdown
-  const levelCount = analysis.levels.length;
-  if (levelCount > 0 && levelCount <= DISPLAY.PRICE_LEVELS_FULL) {
-    lines.push('', '  Price Levels:');
-    for (const level of analysis.levels) {
-      lines.push(formatLevelLine(level));
-    }
-  } else if (levelCount > DISPLAY.PRICE_LEVELS_FULL) {
-    lines.push('', `  Price Levels: ${levelCount} levels (showing first ${DISPLAY.PRICE_LEVELS_PREVIEW})`);
-    for (const level of analysis.levels.slice(0, DISPLAY.PRICE_LEVELS_PREVIEW)) {
-      lines.push(formatLevelLine(level));
-    }
-  }
-
-  return lines.join('\n');
-}
-
-function formatLevelLine(level: LiquidityLevel): string {
-  const profitPct = (level.profitPerContract * 100).toFixed(1);
-  return (
-    `    ${level.contracts} @ ` +
-    `Poly ${formatCents(level.polyPrice)} + ` +
-    `Kalshi ${formatCents(level.kalshiPrice)} = ` +
-    `${profitPct}% profit`
-  );
-}
-
-function formatLimitingFactor(factor: LimitingFactor): string {
-  const descriptions: Record<LimitingFactor, string> = {
-    polymarket_liquidity: 'Polymarket liquidity',
-    kalshi_liquidity: 'Kalshi liquidity',
-    spread_exhausted: 'Spread exhausted (prices converged)',
-    spread_closed: 'Spread closed (order book prices unfavorable)',
-    no_liquidity: 'No liquidity (empty order book)',
-  };
-  return descriptions[factor];
-}
-
-function formatCents(price: number): string {
-  return `${(price * 100).toFixed(1)}¢`;
 }
 
 // ============ Summary ============

@@ -94,22 +94,3 @@ export function detectLeague(eventName: string): League | null {
   return null;
 }
 
-/**
- * Get all teams for a league.
- */
-export function getLeagueTeams(league: League): string[] {
-  const teams = loadTeams();
-  return Object.keys(teams[league] || {});
-}
-
-/**
- * Check if two texts refer to the same team.
- */
-export function isSameTeam(text1: string, text2: string, league: League): boolean {
-  const team1 = normalizeTeamName(text1, league);
-  const team2 = normalizeTeamName(text2, league);
-
-  if (!team1 || !team2) return false;
-
-  return team1 === team2;
-}

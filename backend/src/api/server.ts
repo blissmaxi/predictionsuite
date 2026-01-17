@@ -39,7 +39,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`PolyOracle API running on http://localhost:${PORT}`);
   console.log('');
   console.log('Available endpoints:');
@@ -47,3 +47,21 @@ app.listen(PORT, () => {
   console.log(`  GET /api/opportunities - Arbitrage opportunities`);
   console.log('');
 });
+
+// Graceful shutdown handling
+function shutdown(signal: string) {
+  console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
+  server.close(() => {
+    console.log('[Server] HTTP server closed');
+    process.exit(0);
+  });
+
+  // Force exit if graceful shutdown takes too long
+  setTimeout(() => {
+    console.log('[Server] Forcing shutdown after timeout');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
