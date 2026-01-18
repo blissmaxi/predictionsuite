@@ -20,13 +20,8 @@ import {
   type EventData as KalshiEvent,
 } from 'kalshi-typescript';
 
-import type {
-  UnifiedEvent,
-  UnifiedMarket,
-  FetchResult,
-  PlatformConnector,
-} from '../types/unified.js';
-import { isNonEmptyString } from '../types/unified.js';
+import type { MarketData } from '../matching/market-matcher.js';
+import { withRetry } from '../helpers/helpers.js';
 
 // ============ Constants ============
 
@@ -46,415 +41,139 @@ const config = new Configuration({
 const eventsApi = new EventsApi(config);
 const marketApi = new MarketApi(config);
 
-// ============ Helpers ============
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+
+export interface EventFetchResult {
+  title: string;
+  markets: MarketData[];
+  imageUrl?: string;
+}
+
+// Image URL constants
+const KALSHI_IMAGE_BASE = 'https://d1lvyva3zy5u58.cloudfront.net/series-images-webp';
+const KALSHI_NBA_IMAGE = 'https://kalshi-public-docs.s3.us-east-1.amazonaws.com/override_images/sports/Basketball-NBA-Game.webp';
+
+/**
+ * Get the image URL for a Kalshi series.
+ */
+export function getKalshiImageUrl(seriesTicker: string): string {
+  if (seriesTicker === 'KXNBAGAME') {
+    return KALSHI_NBA_IMAGE;
+  }
+  return `${KALSHI_IMAGE_BASE}/${seriesTicker}.webp?size=sm`;
 }
 
 /**
- * Normalize Kalshi title to match frontend display.
- *
- * The Kalshi API returns titles like "Fed decision in Jan 2026?"
- * but the frontend displays "Fed decision in January?"
- *
- * This function:
- * 1. Expands month abbreviations (Jan → January, Feb → February, etc.)
- * 2. Removes year suffix from titles (e.g., "in January 2026?" → "in January?")
+ * Fetch all events and markets for a series.
+ * Base function used by other fetchers.
  */
-function normalizeKalshiTitle(title: string): string {
-  // Month abbreviation expansions
-  const monthExpansions: [RegExp, string][] = [
-    [/\bJan\b/g, 'January'],
-    [/\bFeb\b/g, 'February'],
-    [/\bMar\b/g, 'March'],
-    [/\bApr\b/g, 'April'],
-    [/\bJun\b/g, 'June'],
-    [/\bJul\b/g, 'July'],
-    [/\bAug\b/g, 'August'],
-    [/\bSep\b/g, 'September'],
-    [/\bSept\b/g, 'September'],
-    [/\bOct\b/g, 'October'],
-    [/\bNov\b/g, 'November'],
-    [/\bDec\b/g, 'December'],
-  ];
-
-  let normalized = title;
-
-  // Expand month abbreviations
-  for (const [pattern, replacement] of monthExpansions) {
-    normalized = normalized.replace(pattern, replacement);
-  }
-
-  // Remove year suffix ONLY when directly after a month
-  // "in January 2026?" → "in January?"
-  // "Q4 2025?" → "Q4?"
-  // But keep: "before 2027?" → "before 2027?" (no month before year)
-  normalized = normalized.replace(
-    /(\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Q[1-4]))\s+20\d{2}(\??)$/i,
-    '$1$2'
-  );
-
-  return normalized;
-}
-
-/**
- * Parse dollar string to number (e.g., "0.4500" -> 0.45)
- */
-function parseDollars(value: string | undefined): number {
-  if (!value) return 0;
-  const parsed = parseFloat(value);
-  return isNaN(parsed) ? 0 : parsed;
-}
-
-// ============ Validation ============
-
-/**
- * Check if a Kalshi market is valid for normalization.
- */
-function isValidKalshiMarket(market: KalshiMarket): boolean {
-  // Must be active
-  if (market.status !== 'active') return false;
-
-  // Must be binary
-  if (market.market_type !== 'binary') return false;
-
-  // Must have valid YES prices
-  const yesBid = parseDollars(market.yes_bid_dollars);
-  const yesAsk = parseDollars(market.yes_ask_dollars);
-
-  // Allow markets with at least some pricing data
-  if (yesBid <= 0 && yesAsk <= 0) return false;
-
-  return true;
-}
-
-// ============ Normalization ============
-
-/**
- * Normalize a Kalshi market to unified format.
- * SDK provides prices in dollar format (e.g., "0.4500") which maps directly to 0-1 probability.
- */
-function normalizeMarket(
-  market: KalshiMarket,
-  event: KalshiEvent
-): UnifiedMarket {
-  // Parse dollar prices (already in 0-1 format)
-  const yesBid = parseDollars(market.yes_bid_dollars);
-  const yesAsk = parseDollars(market.yes_ask_dollars);
-  const noBid = parseDollars(market.no_bid_dollars);
-  const noAsk = parseDollars(market.no_ask_dollars);
-  const lastPrice = parseDollars(market.last_price_dollars);
-
-  // Calculate YES price as midpoint if bid/ask available, otherwise use last_price
-  let yesPrice = lastPrice;
-  if (yesBid > 0 && yesAsk > 0 && yesAsk > yesBid) {
-    yesPrice = (yesBid + yesAsk) / 2;
-  }
-
-  // NO price is complement of YES
-  let noPrice = 1 - yesPrice;
-  if (noBid > 0 && noAsk > 0 && noAsk > noBid) {
-    noPrice = (noBid + noAsk) / 2;
-  }
-
-  // Use yes_sub_title for market name (Kalshi's convention)
-  const question = market.yes_sub_title || market.title || 'Unknown';
-
-  // Parse liquidity from dollars string
-  const liquidityDollars = parseDollars(market.liquidity_dollars);
-
-  return {
-    id: market.ticker,
-    platform: 'kalshi',
-    question,
-    eventId: event.event_ticker,
-    eventTitle: event.title,
-
-    // Prices (already 0-1 from SDK dollar format)
-    yesPrice,
-    noPrice,
-    yesBid,
-    yesAsk,
-    noBid,
-    noAsk,
-
-    // Metadata
-    volume: market.volume,
-    liquidity: liquidityDollars,
-    endDate: market.expiration_time || market.close_time,
-
-    // Source info
-    sourceUrl: `${KALSHI_BASE_URL}/markets/${market.ticker}`,
-    lastUpdated: new Date().toISOString(),
-  };
-}
-
-/**
- * Normalize a Kalshi event with its nested markets.
- */
-function normalizeEvent(
-  event: KalshiEvent,
-  errors: string[]
-): UnifiedEvent | null {
-  // Skip events without title
-  if (!isNonEmptyString(event.title)) {
-    errors.push(`Skipped event ${event.event_ticker}: missing title`);
-    return null;
-  }
-
-  // Get markets from nested response
-  const markets = event.markets ?? [];
-
-  // Normalize valid markets
-  const normalizedMarkets: UnifiedMarket[] = [];
-
-  for (const market of markets) {
-    if (!isValidKalshiMarket(market)) {
-      errors.push(
-        `Skipped market ${market.ticker}: failed validation (inactive, non-binary, or no prices)`
-      );
-      continue;
-    }
-
-    normalizedMarkets.push(normalizeMarket(market, event));
-  }
-
-  // Skip events with no valid markets
-  if (normalizedMarkets.length === 0) {
-    errors.push(`Skipped event ${event.event_ticker} "${event.title}": no valid markets`);
-    return null;
-  }
-
-  return {
-    id: event.event_ticker,
-    platform: 'kalshi',
-    title: normalizeKalshiTitle(event.title),
-    category: event.category || undefined,
-    markets: normalizedMarkets,
-    endDate: undefined,
-    sourceUrl: `${KALSHI_BASE_URL}/events/${event.event_ticker}`,
-  };
-}
-
-// ============ Connector Implementation ============
-
-/**
- * Fetch and normalize Kalshi events with their markets.
- *
- * Uses SDK's getEvents() with withNestedMarkets=true to get events AND markets
- * in a single API call, eliminating the N+1 problem.
- *
- * @param limit Maximum number of events to fetch (default: 50)
- * @returns Normalized events with error log
- */
-export async function fetchKalshiEvents(
-  limit: number = 50
-): Promise<FetchResult<UnifiedEvent>> {
-  const errors: string[] = [];
-  const fetchedAt = new Date().toISOString();
-
-  try {
-    // Use SDK to fetch events with nested markets
+async function fetchEventsBySeries(series: string): Promise<KalshiEvent[]> {
+  return await withRetry(async () => {
     const response = await eventsApi.getEvents(
-      Math.min(limit, 200), // limit (max 200 per page)
-      undefined,            // cursor (first page)
-      true,                 // withNestedMarkets - KEY: includes markets!
-      false,                // withMilestones
-      'open',               // status
-      undefined,            // seriesTicker
-      undefined             // minCloseTs
+      100,
+      undefined,
+      true,    // withNestedMarkets
+      false,
+      'open',
+      series
     );
-
-    const normalizedEvents: UnifiedEvent[] = [];
-
-    for (const event of response.data.events ?? []) {
-      const normalized = normalizeEvent(event, errors);
-      if (normalized) {
-        normalizedEvents.push(normalized);
-      }
-    }
-
-    return {
-      data: normalizedEvents,
-      errors,
-      fetchedAt,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    errors.push(`Failed to fetch Kalshi events: ${message}`);
-
-    return {
-      data: [],
-      errors,
-      fetchedAt,
-    };
-  }
+    return response.data.events || [];
+  });
 }
 
 /**
- * Fetch ALL Kalshi events with their markets using pagination.
- *
- * Uses SDK's cursor pagination with withNestedMarkets=true.
- * Much faster than the old N+1 approach since each page returns events WITH markets.
- *
- * @param options.batchSize Events per page (default: 200, max 200)
- * @param options.maxEvents Maximum events to fetch, 0 for all (default: 0)
- * @param options.onProgress Callback for progress updates
- * @returns All normalized events with error log
+ * Fetch a single event by ticker for scanner use.
  */
-export async function fetchAllKalshiEvents(options: {
-  batchSize?: number;
-  maxEvents?: number;
-  onProgress?: (fetched: number, total: number) => void;
-} = {}): Promise<FetchResult<UnifiedEvent>> {
-  const { batchSize = 200, maxEvents = 0, onProgress } = options;
-  const errors: string[] = [];
-  const fetchedAt = new Date().toISOString();
+export async function fetchKalshiEvent(ticker: string): Promise<EventFetchResult | null> {
+  const series = ticker.replace(/-.*$/, '');
+  return fetchKalshiEventBySeries(ticker, series);
+}
 
+/**
+ * Fetch a single event by ticker and series for scanner use.
+ */
+export async function fetchKalshiEventBySeries(
+  ticker: string,
+  series: string
+): Promise<EventFetchResult | null> {
   try {
-    const allEvents: UnifiedEvent[] = [];
-    let cursor: string | undefined;
-    let totalFetched = 0;
+    const events = await fetchEventsBySeries(series);
+    const event = events.find(
+      (e) => e.event_ticker?.toUpperCase() === ticker.toUpperCase()
+    );
 
-    while (true) {
-      // Fetch page of events with nested markets
-      const response = await eventsApi.getEvents(
-        Math.min(batchSize, 200),
-        cursor,
-        true,      // withNestedMarkets
-        false,     // withMilestones
-        'open',    // status
-        undefined, // seriesTicker
-        undefined  // minCloseTs
+    if (!event) return null;
+
+    const markets: MarketData[] = (event.markets || [])
+      .filter((m: KalshiMarket) => m.status === 'active')
+      .map((m: KalshiMarket) => ({
+        question: m.yes_sub_title || m.title || 'Unknown',
+        yesPrice: parseFloat(m.last_price_dollars || '0') || 0,
+        volume: m.volume || 0,
+        ticker: m.ticker,
+        endDate: (m as any).expected_expiration_time || undefined,
+      }));
+
+    const imageUrl = getKalshiImageUrl(series);
+
+    return { title: event.title || ticker, markets, imageUrl };
+  } catch (error: any) {
+    const status = error?.response?.status || error?.status || 'unknown';
+    console.warn(`[Kalshi] Error fetching ${ticker} (series: ${series}): HTTP ${status}`);
+    return null;
+  }
+}
+
+// ============ NBA Game Markets ============
+
+/**
+ * Fetch all NBA game markets from Kalshi.
+ */
+export async function fetchKalshiNbaMarkets(): Promise<any[]> {
+  try {
+    const events = await fetchEventsBySeries('KXNBAGAME');
+    const allMarkets: any[] = [];
+
+    for (const event of events) {
+      const markets = (event.markets || []).filter(
+        (m: KalshiMarket) => m.status === 'active'
       );
-
-      const events = response.data.events ?? [];
-      totalFetched += events.length;
-
-      // Normalize each event
-      for (const event of events) {
-        const normalized = normalizeEvent(event, errors);
-        if (normalized) {
-          allEvents.push(normalized);
-        }
-      }
-
-      onProgress?.(totalFetched, 0);
-
-      // Check if we should stop
-      if (events.length < batchSize || !response.data.cursor) {
-        break;
-      }
-
-      if (maxEvents > 0 && totalFetched >= maxEvents) {
-        break;
-      }
-
-      cursor = response.data.cursor;
-
-      // Small delay between pagination calls
-      await sleep(API_DELAY_MS);
+      allMarkets.push(...markets);
     }
 
-    // Trim to maxEvents if specified
-    const result = maxEvents > 0 ? allEvents.slice(0, maxEvents) : allEvents;
-
-    return {
-      data: result,
-      errors,
-      fetchedAt,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    errors.push(`Failed to fetch Kalshi events: ${message}`);
-
-    return {
-      data: [],
-      errors,
-      fetchedAt,
-    };
+    return allMarkets;
+  } catch (error: any) {
+    console.warn(`[Kalshi] Error fetching NBA markets: ${error?.message || 'unknown'}`);
+    return [];
   }
 }
 
 /**
- * Fetch and normalize Kalshi markets directly (without event grouping).
- *
- * Uses SDK's getMarkets() with up to 1000 results per page.
- *
- * @param limit Maximum number of markets to fetch (default: 100)
- * @returns Normalized markets with error log
+ * Filter NBA markets for a specific game ticker.
  */
-export async function fetchKalshiMarkets(
-  limit: number = 100
-): Promise<FetchResult<UnifiedMarket>> {
-  const errors: string[] = [];
-  const fetchedAt = new Date().toISOString();
+export function filterKalshiNbaGame(
+  allMarkets: any[],
+  ticker: string
+): EventFetchResult | null {
+  const markets: MarketData[] = [];
 
-  try {
-    const response = await marketApi.getMarkets(
-      Math.min(limit, 1000), // limit (max 1000)
-      undefined,             // cursor
-      undefined,             // eventTicker
-      undefined,             // seriesTicker
-      undefined,             // minCreatedTs
-      undefined,             // maxCreatedTs
-      undefined,             // maxCloseTs
-      undefined,             // minCloseTs
-      undefined,             // minSettledTs
-      undefined,             // maxSettledTs
-      'open',                // status
-      undefined,             // tickers
-      'exclude'              // mveFilter - exclude multivariate/combo markets
-    );
-
-    const normalizedMarkets: UnifiedMarket[] = [];
-
-    for (const market of response.data.markets ?? []) {
-      if (!isValidKalshiMarket(market)) {
-        errors.push(`Skipped market ${market.ticker}: failed validation`);
-        continue;
-      }
-
-      // Create minimal event context
-      const event: KalshiEvent = {
-        event_ticker: market.event_ticker,
-        series_ticker: '',
-        title: market.yes_sub_title || market.title || 'Unknown Event',
-        sub_title: market.subtitle || '',
-        category: '',
-        mutually_exclusive: false,
-      };
-
-      normalizedMarkets.push(normalizeMarket(market, event));
+  for (const market of allMarkets) {
+    if (market.ticker?.startsWith(ticker)) {
+      markets.push({
+        question: market.yes_sub_title || market.title || 'Unknown',
+        yesPrice: parseFloat(market.last_price_dollars || '0') || 0,
+        volume: market.volume || 0,
+        ticker: market.ticker,
+        endDate: market.expected_expiration_time || undefined,
+      });
     }
-
-    return {
-      data: normalizedMarkets,
-      errors,
-      fetchedAt,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    errors.push(`Failed to fetch Kalshi markets: ${message}`);
-
-    return {
-      data: [],
-      errors,
-      fetchedAt,
-    };
   }
+
+  if (markets.length === 0) return null;
+
+  return {
+    title: `NBA Game: ${ticker}`,
+    markets,
+    imageUrl: getKalshiImageUrl('KXNBAGAME'),
+  };
 }
-
-// ============ Connector Export ============
-
-/**
- * Kalshi connector implementing PlatformConnector interface.
- */
-export const kalshiConnector: PlatformConnector = {
-  platform: 'kalshi',
-  fetchEvents: fetchKalshiEvents,
-  fetchMarkets: fetchKalshiMarkets,
-};
-
-export default kalshiConnector;

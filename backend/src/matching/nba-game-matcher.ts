@@ -9,8 +9,8 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-import { generatePolymarketNbaSlug } from './polymarket/nba-parser.js';
-import { parseKalshiNbaTicker, KALSHI_NBA_SERIES } from './kalshi/nba-parser.js';
+import { generatePolymarketNbaSlug } from './polymarket/slug-generator.js';
+import { parseKalshiNbaTicker, KALSHI_NBA_SERIES } from './kalshi/ticker-generator.js';
 
 // ============ Types ============
 

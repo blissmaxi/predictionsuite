@@ -34,22 +34,6 @@ export const KALSHI = {
   TIMEOUT_MS: 30_000,
 } as const;
 
-// ============ Arbitrage Thresholds ============
-
-export const ARBITRAGE = {
-  /** Minimum spread percentage to consider as opportunity */
-  MIN_SPREAD_PCT: 2.0,
-
-  /** Minimum profit percentage after fees */
-  MIN_PROFIT_PCT: 1.0,
-
-  /** Estimated Polymarket fee (varies by market) */
-  POLYMARKET_FEE_PCT: 2.0,
-
-  /** Estimated Kalshi fee (varies by market) */
-  KALSHI_FEE_PCT: 1.0,
-} as const;
-
 // ============ Scanner Settings ============
 
 export const SCANNER = {
@@ -66,18 +50,3 @@ export const SCANNER = {
   POLL_INTERVAL_MS: 60_000,
 } as const;
 
-// ============ Display Formatting ============
-
-export const DISPLAY = {
-  /** Width of separator lines in console output */
-  SEPARATOR_WIDTH: 70,
-
-  /** Maximum markets to show in preview lists */
-  PREVIEW_LIMIT: 3,
-
-  /** Maximum price levels to show in liquidity analysis */
-  PRICE_LEVELS_PREVIEW: 3,
-
-  /** Maximum price levels before truncating */
-  PRICE_LEVELS_FULL: 5,
-} as const;
