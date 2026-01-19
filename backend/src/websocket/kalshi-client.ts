@@ -9,10 +9,9 @@ import WebSocket from 'ws';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { EventEmitter } from 'events';
+import { MarketWebSocketClient } from './base-client.js';
 import type {
   KalshiCredentials,
-  ConnectionState,
   OrderBookState,
   OrderBookSnapshot,
   OrderBookDelta,
@@ -24,55 +23,57 @@ import type {
 
 const WS_URL = 'wss://api.elections.kalshi.com/trade-api/ws/v2';
 const WS_PATH = '/trade-api/ws/v2';
-const RECONNECT_DELAY_MS = 5000;
 
 // ============ Client Class ============
 
-export class KalshiWebSocketClient extends EventEmitter {
-  private ws: WebSocket | null = null;
+export class KalshiWebSocketClient extends MarketWebSocketClient {
   private credentials: KalshiCredentials;
-  private state: ConnectionState = 'disconnected';
   private commandId = 0;
   private subscriptions = new Map<string, number>(); // marketTicker -> sid
   private orderbooks = new Map<string, OrderBookState>();
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private shouldReconnect = true;
 
   constructor(credentials?: KalshiCredentials) {
     super();
     this.credentials = credentials || this.loadCredentialsFromEnv();
   }
 
-  // ============ Public API ============
+  // ============ Abstract Method Implementations ============
 
-  /**
-   * Connect to Kalshi WebSocket.
-   */
-  connect(): void {
-    if (this.state === 'connected' || this.state === 'connecting') {
-      return;
-    }
-
-    this.shouldReconnect = true;
-    this.state = 'connecting';
-    this.doConnect();
+  protected getWebSocketUrl(): string {
+    return WS_URL;
   }
 
-  /**
-   * Disconnect from Kalshi WebSocket.
-   */
-  disconnect(): void {
-    this.shouldReconnect = false;
-    this.clearReconnectTimer();
+  protected getConnectionOptions(): WebSocket.ClientOptions {
+    return { headers: this.getAuthHeaders() };
+  }
 
-    if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
-      this.ws = null;
+  protected onConnected(): void {
+    // Resubscribe to any previously subscribed markets
+    const markets = Array.from(this.subscriptions.keys());
+    this.subscriptions.clear();
+    for (const market of markets) {
+      this.subscribe(market);
     }
+  }
 
-    this.state = 'disconnected';
+  protected onMessage(data: string): void {
+    try {
+      const msg = JSON.parse(data) as WebSocketMessage;
+      this.handleMessage(msg);
+    } catch (err) {
+      this.emit('error', new Error(`Failed to parse message: ${err}`));
+    }
+  }
+
+  protected onDisconnected(): void {
+    // No additional cleanup needed
+  }
+
+  protected clearSubscriptions(): void {
     this.subscriptions.clear();
   }
+
+  // ============ Public API ============
 
   /**
    * Subscribe to orderbook updates for a market.
@@ -97,7 +98,7 @@ export class KalshiWebSocketClient extends EventEmitter {
       },
     };
 
-    this.ws.send(JSON.stringify(cmd));
+    this.send(cmd);
   }
 
   /**
@@ -124,14 +125,7 @@ export class KalshiWebSocketClient extends EventEmitter {
       },
     };
 
-    this.ws.send(JSON.stringify(cmd));
-  }
-
-  /**
-   * Get all current orderbook states.
-   */
-  getAllOrderbooks(): Map<string, OrderBookState> {
-    return new Map(this.orderbooks);
+    this.send(cmd);
   }
 
   /**
@@ -151,7 +145,7 @@ export class KalshiWebSocketClient extends EventEmitter {
       },
     };
 
-    this.ws.send(JSON.stringify(cmd));
+    this.send(cmd);
     this.subscriptions.delete(marketTicker);
     this.orderbooks.delete(marketTicker);
   }
@@ -164,81 +158,17 @@ export class KalshiWebSocketClient extends EventEmitter {
   }
 
   /**
+   * Get all current orderbook states.
+   */
+  getAllOrderbooks(): Map<string, OrderBookState> {
+    return new Map(this.orderbooks);
+  }
+
+  /**
    * Get all subscribed market tickers.
    */
   getSubscribedMarkets(): string[] {
     return Array.from(this.subscriptions.keys());
-  }
-
-  /**
-   * Get current connection state.
-   */
-  getState(): ConnectionState {
-    return this.state;
-  }
-
-  // ============ Connection Management ============
-
-  private doConnect(): void {
-    const headers = this.getAuthHeaders();
-
-    this.ws = new WebSocket(WS_URL, { headers });
-
-    this.ws.on('open', () => {
-      this.state = 'connected';
-      this.emit('connected');
-
-      // Resubscribe to any previously subscribed markets
-      const markets = Array.from(this.subscriptions.keys());
-      this.subscriptions.clear();
-      for (const market of markets) {
-        this.subscribe(market);
-      }
-    });
-
-    this.ws.on('message', (data) => {
-      try {
-        const msg = JSON.parse(data.toString()) as WebSocketMessage;
-        this.handleMessage(msg);
-      } catch (err) {
-        this.emit('error', new Error(`Failed to parse message: ${err}`));
-      }
-    });
-
-    this.ws.on('ping', (data) => {
-      this.ws?.pong(data);
-    });
-
-    this.ws.on('close', (code, reason) => {
-      this.state = 'disconnected';
-      this.ws = null;
-      this.emit('disconnected', code, reason.toString());
-
-      if (this.shouldReconnect) {
-        this.scheduleReconnect();
-      }
-    });
-
-    this.ws.on('error', (err) => {
-      this.emit('error', err);
-    });
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-
-    this.state = 'reconnecting';
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.doConnect();
-    }, RECONNECT_DELAY_MS);
-  }
-
-  private clearReconnectTimer(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
   }
 
   // ============ Message Handling ============
@@ -271,8 +201,16 @@ export class KalshiWebSocketClient extends EventEmitter {
   }
 
   private handleSnapshot(msg: OrderBookSnapshot): void {
+    if (!msg.msg) {
+      return; // No message payload
+    }
+
     const { market_ticker, yes, no } = msg.msg;
     const seq = msg.seq;
+
+    if (!market_ticker || !yes || !no) {
+      return; // Incomplete snapshot, skip
+    }
 
     const orderbook: OrderBookState = {
       marketTicker: market_ticker,
@@ -288,6 +226,11 @@ export class KalshiWebSocketClient extends EventEmitter {
   }
 
   private handleDelta(msg: OrderBookDelta): void {
+    if (!msg.msg) {
+      return; // No message payload
+    }
+
+    console.log('handleDelta', msg.msg);
     const { market_ticker, price, delta, side } = msg.msg;
     const seq = msg.seq;
 

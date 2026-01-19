@@ -5,10 +5,6 @@
  * Prices use tenth of cent precision (0-1000 for 0-100¢).
  */
 
-// ============ Connection ============
-
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-
 // ============ Subscription Messages ============
 
 export interface PolymarketSubscription {

@@ -141,7 +141,7 @@ function main() {
   client.on('orderbook', () => {
     const allOrderbooks = client.getAllOrderbooks();
     if (allOrderbooks.size > 0) {
-      printAllOrderbooks(allOrderbooks);
+      //printAllOrderbooks(allOrderbooks);
     }
   });
 

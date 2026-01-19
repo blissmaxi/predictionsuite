@@ -5,10 +5,8 @@
  * No authentication required for market channel (public data).
  */
 
-import WebSocket from 'ws';
-import { EventEmitter } from 'events';
+import { MarketWebSocketClient } from './base-client.js';
 import type {
-  ConnectionState,
   PolymarketOrderBookState,
   BookMessage,
   PriceChangeMessage,
@@ -20,55 +18,68 @@ import { parsePrice } from './polymarket-types.js';
 // ============ Constants ============
 
 const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
-const RECONNECT_DELAY_MS = 5000;
 const PING_INTERVAL_MS = 10000;
 
 // ============ Client Class ============
 
-export class PolymarketWebSocketClient extends EventEmitter {
-  private ws: WebSocket | null = null;
-  private state: ConnectionState = 'disconnected';
+export class PolymarketWebSocketClient extends MarketWebSocketClient {
   private subscriptions = new Set<string>(); // asset IDs
   private orderbooks = new Map<string, PolymarketOrderBookState>();
-  private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
-  private shouldReconnect = true;
 
   constructor() {
     super();
   }
 
-  // ============ Public API ============
+  // ============ Abstract Method Implementations ============
 
-  /**
-   * Connect to Polymarket WebSocket.
-   */
-  connect(): void {
-    if (this.state === 'connected' || this.state === 'connecting') {
+  protected getWebSocketUrl(): string {
+    return WS_URL;
+  }
+
+  protected getConnectionOptions(): undefined {
+    return undefined; // No auth needed
+  }
+
+  protected onConnected(): void {
+    this.startPing();
+
+    // Send pending subscriptions
+    if (this.subscriptions.size > 0) {
+      this.send({
+        assets_ids: Array.from(this.subscriptions),
+        type: 'market',
+      });
+    }
+  }
+
+  protected onMessage(data: string): void {
+    // Handle non-JSON responses (PONG, errors, etc.)
+    if (data === 'PONG' || data === 'INVALID OPERATION') {
       return;
     }
 
-    this.shouldReconnect = true;
-    this.state = 'connecting';
-    this.doConnect();
+    try {
+      const parsed = JSON.parse(data);
+      // Handle both array format and single object format
+      const messages = Array.isArray(parsed) ? parsed : [parsed];
+      for (const msg of messages) {
+        this.handleMessage(msg as WebSocketMessage);
+      }
+    } catch (err) {
+      this.emit('error', new Error(`Failed to parse message: ${err}`));
+    }
   }
 
-  /**
-   * Disconnect from Polymarket WebSocket.
-   */
-  disconnect(): void {
-    this.shouldReconnect = false;
-    this.clearReconnectTimer();
+  protected onDisconnected(): void {
     this.stopPing();
+  }
 
-    if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
-      this.ws = null;
-    }
-
-    this.state = 'disconnected';
+  protected clearSubscriptions(): void {
     this.subscriptions.clear();
   }
+
+  // ============ Public API ============
 
   /**
    * Subscribe to orderbook updates for a token.
@@ -84,12 +95,10 @@ export class PolymarketWebSocketClient extends EventEmitter {
       return;
     }
 
-    const msg = {
+    this.send({
       assets_ids: [assetId],
       type: 'market',
-    };
-
-    this.ws.send(JSON.stringify(msg));
+    });
     this.subscriptions.add(assetId);
   }
 
@@ -108,12 +117,10 @@ export class PolymarketWebSocketClient extends EventEmitter {
       return;
     }
 
-    const msg = {
+    this.send({
       assets_ids: newIds,
       type: 'market',
-    };
-
-    this.ws.send(JSON.stringify(msg));
+    });
   }
 
   /**
@@ -125,11 +132,10 @@ export class PolymarketWebSocketClient extends EventEmitter {
     }
 
     if (this.state === 'connected' && this.ws) {
-      const msg = {
+      this.send({
         assets_ids: [assetId],
         operation: 'unsubscribe',
-      };
-      this.ws.send(JSON.stringify(msg));
+      });
     }
 
     this.subscriptions.delete(assetId);
@@ -157,93 +163,13 @@ export class PolymarketWebSocketClient extends EventEmitter {
     return Array.from(this.subscriptions);
   }
 
-  /**
-   * Get current connection state.
-   */
-  getState(): ConnectionState {
-    return this.state;
-  }
-
-  // ============ Connection Management ============
-
-  private doConnect(): void {
-    this.ws = new WebSocket(WS_URL);
-
-    this.ws.on('open', () => {
-      this.state = 'connected';
-      this.emit('connected');
-      this.startPing();
-
-      // Send pending subscriptions
-      if (this.subscriptions.size > 0) {
-        const msg = {
-          assets_ids: Array.from(this.subscriptions),
-          type: 'market',
-        };
-        this.ws!.send(JSON.stringify(msg));
-      }
-    });
-
-    this.ws.on('message', (data) => {
-      const dataStr = data.toString();
-
-      // Handle non-JSON responses (PONG, errors, etc.)
-      if (dataStr === 'PONG' || dataStr === 'INVALID OPERATION') {
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(dataStr);
-        // Handle both array format and single object format
-        const messages = Array.isArray(parsed) ? parsed : [parsed];
-        for (const msg of messages) {
-          this.handleMessage(msg as WebSocketMessage);
-        }
-      } catch (err) {
-        this.emit('error', new Error(`Failed to parse message: ${err}`));
-      }
-    });
-
-    this.ws.on('close', (code, reason) => {
-      this.state = 'disconnected';
-      this.ws = null;
-      this.stopPing();
-      this.emit('disconnected', code, reason.toString());
-
-      if (this.shouldReconnect) {
-        this.scheduleReconnect();
-      }
-    });
-
-    this.ws.on('error', (err) => {
-      this.emit('error', err);
-    });
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-
-    this.state = 'reconnecting';
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.doConnect();
-    }, RECONNECT_DELAY_MS);
-  }
-
-  private clearReconnectTimer(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-  }
-
   // ============ Keep-Alive ============
 
   private startPing(): void {
     this.stopPing();
     this.pingTimer = setInterval(() => {
       if (this.ws && this.state === 'connected') {
-        this.ws.send('PING');
+        this.send('PING');
       }
     }, PING_INTERVAL_MS);
   }

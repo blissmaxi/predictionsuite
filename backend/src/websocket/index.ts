@@ -4,11 +4,14 @@
  * Real-time connections to prediction market platforms.
  */
 
+// Base
+export { MarketWebSocketClient } from './base-client.js';
+export type { ConnectionState, BaseWebSocketEvents } from './base-client.js';
+
 // Kalshi
 export { KalshiWebSocketClient } from './kalshi-client.js';
 export type {
   KalshiCredentials,
-  ConnectionState,
   OrderBookState,
   OrderBookLevel,
   OrderBookSnapshot,

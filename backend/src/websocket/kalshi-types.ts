@@ -9,8 +9,6 @@ export interface KalshiCredentials {
   privateKey: string;
 }
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-
 // ============ Commands ============
 
 export interface SubscribeCommand {
