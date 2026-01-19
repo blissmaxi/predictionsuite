@@ -18,7 +18,7 @@ import type {
   OrderBookDelta,
   WebSocketMessage,
   KalshiWebSocketEvents,
-} from './types.js';
+} from './kalshi-types.js';
 
 // ============ Constants ============
 

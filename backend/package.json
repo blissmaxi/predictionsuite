@@ -14,6 +14,9 @@
     "test:weather": "npx tsx src/scripts/test-weather-matching.ts",
     "scan:weather": "npx tsx src/scripts/weather-arb-scanner.ts",
     "test-orderbook": "npx tsx src/scripts/test-orderbook.ts",
+    "polymarket-slug": "npx tsx src/scripts/polymarket-lookup.ts",
+    "websocket:polymarket": "npx tsx src/scripts/test-polymarket-websocket.ts",
+    "websocket:kalshi": "npx tsx src/scripts/test-kalshi-websocket.ts",
     "scan": "npx tsx src/scanner.ts",
     "api": "npx tsx src/api/server.ts"
   },

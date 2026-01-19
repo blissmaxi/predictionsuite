@@ -4,6 +4,7 @@
  * Real-time connections to prediction market platforms.
  */
 
+// Kalshi
 export { KalshiWebSocketClient } from './kalshi-client.js';
 export type {
   KalshiCredentials,
@@ -13,4 +14,14 @@ export type {
   OrderBookSnapshot,
   OrderBookDelta,
   KalshiWebSocketEvents,
-} from './types.js';
+} from './kalshi-types.js';
+
+// Polymarket
+export { PolymarketWebSocketClient } from './polymarket-client.js';
+export type {
+  PolymarketOrderBookState,
+  PolymarketWebSocketEvents,
+  BookMessage,
+  PriceChangeMessage,
+} from './polymarket-types.js';
+export { parsePrice, formatPrice } from './polymarket-types.js';
