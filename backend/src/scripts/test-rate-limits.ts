@@ -7,7 +7,7 @@
  * Run: npx tsx src/scripts/test-rate-limits.ts
  */
 
-import { POLYMARKET, KALSHI } from '../config/api.js';
+import { POLYMARKET, KALSHI } from '../_depricated/config/api.js';
 
 // ============ Types ============
 

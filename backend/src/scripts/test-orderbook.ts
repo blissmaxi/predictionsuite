@@ -8,14 +8,14 @@
 import {
   matchMarketsWithinEvent,
   type MarketData,
-} from '../matching/market-matcher.js';
+} from '../_depricated/matching/market-matcher.js';
 import {
   fetchPolymarketOrderBook,
   fetchKalshiOrderBook,
-} from '../orderbook/fetcher.js';
+} from '../_depricated/orderbook/fetcher.js';
 import {
   findArbitrageOpportunities,
-} from '../arbitrage/calculator.js';
+} from '../_depricated/arbitrage/calculator.js';
 
 const POLYMARKET_GAMMA_URL = 'https://gamma-api.polymarket.com';
 const KALSHI_API_URL = 'https://api.elections.kalshi.com/trade-api/v2';

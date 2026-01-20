@@ -229,8 +229,6 @@ export class KalshiWebSocketClient extends MarketWebSocketClient {
     if (!msg.msg) {
       return; // No message payload
     }
-
-    console.log('handleDelta', msg.msg);
     const { market_ticker, price, delta, side } = msg.msg;
     const seq = msg.seq;
 

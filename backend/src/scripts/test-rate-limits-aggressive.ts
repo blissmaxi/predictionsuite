@@ -6,7 +6,7 @@
  * Run: npx tsx src/scripts/test-rate-limits-aggressive.ts
  */
 
-import { POLYMARKET, KALSHI } from '../config/api.js';
+import { POLYMARKET, KALSHI } from '../_depricated/config/api.js';
 
 interface TestResult {
   requestNum: number;
