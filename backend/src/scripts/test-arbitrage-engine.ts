@@ -41,13 +41,13 @@ function formatPrice(price: number): string {
 }
 
 function formatOrderbook(ob: NormalizedOrderbook): string {
-  const yesAsk = ob.yesAsks[0];
-  const yesBid = ob.yesBids[0];
 
-  // YES ask = price to buy YES
-  // NO ask = 1 - best YES bid (since selling YES = buying NO)
-  const yesAskStr = yesAsk ? `${formatPrice(yesAsk.price)} (${yesAsk.size.toFixed(0)})` : 'none';
-  const noAskStr = yesBid ? `${formatPrice(1 - yesBid.price)} (${yesBid.size.toFixed(0)})` : 'none';
+  console.log(ob);
+  const yesAsk = ob.yesAsks[0];
+  const noAsk = ob.noAsks[0];
+
+  const yesAskStr = yesAsk ? `${formatPrice(yesAsk.price)} (${yesAsk.size.toLocaleString('en-US', { maximumFractionDigits: 2 })})` : 'none';
+  const noAskStr = noAsk ? `${formatPrice(noAsk.price)} (${noAsk.size.toLocaleString('en-US', { maximumFractionDigits: 2 })})` : 'none';
 
   return `YES ask: ${yesAskStr} | NO ask: ${noAskStr}`;
 }

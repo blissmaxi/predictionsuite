@@ -20,12 +20,13 @@ export interface PriceLevel {
 /**
  * Platform-agnostic orderbook representation.
  * All prices normalized to 0-1 probability scale.
+ * Shows the prices to BUY each outcome.
  */
 export interface NormalizedOrderbook {
   platform: Platform;
   marketId: string; // Kalshi ticker or Polymarket assetId
-  yesBids: PriceLevel[]; // Sorted descending by price (best first)
-  yesAsks: PriceLevel[]; // Sorted ascending by price (best first)
+  yesAsks: PriceLevel[]; // Price to buy YES, sorted ascending (best first)
+  noAsks: PriceLevel[]; // Price to buy NO, sorted ascending (best first)
   updatedAt: Date;
 }
 

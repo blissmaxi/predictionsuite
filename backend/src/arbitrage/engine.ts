@@ -263,20 +263,16 @@ export class ArbitrageEngine extends EventEmitter {
     // Need both orderbooks to compare
     if (!kalshiOb || !polyOb) return;
 
-    // Calculate cost to buy YES + NO on each platform
-    // YES ask = direct ask price, NO ask = 1 - best YES bid
+    // Get best ask prices for YES and NO on each platform
     const kalshiYesAsk = kalshiOb.yesAsks[0]?.price;
-    const kalshiYesBid = kalshiOb.yesBids[0]?.price;
+    const kalshiNoAsk = kalshiOb.noAsks[0]?.price;
     const polyYesAsk = polyOb.yesAsks[0]?.price;
-    const polyYesBid = polyOb.yesBids[0]?.price;
+    const polyNoAsk = polyOb.noAsks[0]?.price;
 
-    if (kalshiYesAsk === undefined || kalshiYesBid === undefined ||
-        polyYesAsk === undefined || polyYesBid === undefined) {
+    if (kalshiYesAsk === undefined || kalshiNoAsk === undefined ||
+        polyYesAsk === undefined || polyNoAsk === undefined) {
       return;
     }
-
-    const kalshiNoAsk = 1 - kalshiYesBid;
-    const polyNoAsk = 1 - polyYesBid;
 
     // Find cheapest YES and NO across platforms
     const bestYesAsk = Math.min(kalshiYesAsk, polyYesAsk);
@@ -289,7 +285,7 @@ export class ArbitrageEngine extends EventEmitter {
 
     const formatPrice = (p: number) => `${(p * 100).toFixed(1)}¢`;
 
-    console.log(`  ${pair.id} Best YES ask: ${formatPrice(bestYesAsk)} (${bestYesPlatform})`);
+    console.log(`  Best YES ask: ${formatPrice(bestYesAsk)} ${formatPrice(bestYesAsk)} (${bestYesPlatform})`);
     console.log(`  Best NO ask:  ${formatPrice(bestNoAsk)} (${bestNoPlatform})`);
     console.log(`  Total cost:   ${formatPrice(totalCost)} | Spread: ${spread.toFixed(2)}%`);
 
@@ -353,29 +349,28 @@ export class ArbitrageEngine extends EventEmitter {
     kalshiOb: NormalizedOrderbook,
     polyOb: NormalizedOrderbook
   ): ArbitrageOpportunity | null {
-    // Get best prices
-    const kalshiBestAsk = kalshiOb.yesAsks[0]?.price;
-    const kalshiBestBid = kalshiOb.yesBids[0]?.price;
-    const polyBestAsk = polyOb.yesAsks[0]?.price;
-    const polyBestBid = polyOb.yesBids[0]?.price;
+    // Get best ask prices for YES and NO
+    const kalshiYesAsk = kalshiOb.yesAsks[0]?.price;
+    const kalshiNoAsk = kalshiOb.noAsks[0]?.price;
+    const polyYesAsk = polyOb.yesAsks[0]?.price;
+    const polyNoAsk = polyOb.noAsks[0]?.price;
 
     if (
-      kalshiBestAsk === undefined ||
-      kalshiBestBid === undefined ||
-      polyBestAsk === undefined ||
-      polyBestBid === undefined
+      kalshiYesAsk === undefined ||
+      kalshiNoAsk === undefined ||
+      polyYesAsk === undefined ||
+      polyNoAsk === undefined
     ) {
       return null;
     }
 
     // Check for guaranteed arbitrage:
     // Buy YES on one platform + Buy NO on other < $1
-    // Since we normalized to YES, buying NO = selling YES = taking the bid
 
-    // Strategy 1: Buy YES on Kalshi, Sell YES (buy NO) on Polymarket
-    const cost1 = kalshiBestAsk + (1 - polyBestBid);
-    // Strategy 2: Buy YES on Polymarket, Sell YES (buy NO) on Kalshi
-    const cost2 = polyBestAsk + (1 - kalshiBestBid);
+    // Strategy 1: Buy YES on Kalshi, Buy NO on Polymarket
+    const cost1 = kalshiYesAsk + polyNoAsk;
+    // Strategy 2: Buy YES on Polymarket, Buy NO on Kalshi
+    const cost2 = polyYesAsk + kalshiNoAsk;
 
     let buyYesPlatform: Platform;
     let buyYesPrice: number;
@@ -385,15 +380,15 @@ export class ArbitrageEngine extends EventEmitter {
 
     if (cost1 < cost2) {
       buyYesPlatform = 'kalshi';
-      buyYesPrice = kalshiBestAsk;
+      buyYesPrice = kalshiYesAsk;
       buyNoPlatform = 'polymarket';
-      buyNoPrice = 1 - polyBestBid;
+      buyNoPrice = polyNoAsk;
       totalCost = cost1;
     } else {
       buyYesPlatform = 'polymarket';
-      buyYesPrice = polyBestAsk;
+      buyYesPrice = polyYesAsk;
       buyNoPlatform = 'kalshi';
-      buyNoPrice = 1 - kalshiBestBid;
+      buyNoPrice = kalshiNoAsk;
       totalCost = cost2;
     }
 
@@ -408,12 +403,12 @@ export class ArbitrageEngine extends EventEmitter {
       buyYesPlatform === 'kalshi'
         ? kalshiOb.yesAsks[0]?.size ?? 0
         : polyOb.yesAsks[0]?.size ?? 0;
-    const sellYesSize =
+    const buyNoSize =
       buyNoPlatform === 'kalshi'
-        ? kalshiOb.yesBids[0]?.size ?? 0
-        : polyOb.yesBids[0]?.size ?? 0;
+        ? kalshiOb.noAsks[0]?.size ?? 0
+        : polyOb.noAsks[0]?.size ?? 0;
 
-    const maxContracts = Math.min(buyYesSize, sellYesSize);
+    const maxContracts = Math.min(buyYesSize, buyNoSize);
     const potentialProfit = (1 - totalCost) * maxContracts;
 
     return {
